@@ -1,0 +1,14 @@
+version: "3.9"
+
+services:
+  polybtc:
+    image: python:3.12-slim
+    working_dir: /workspace
+    command: ["bash", "-lc", "sleep infinity"]
+    volumes:
+      - ${WORKSPACE_DIR:-../..}:/workspace
+    env_file:
+      - ${TRADING_ENV_FILE:-../../pm-hl-conservative-plus-repo/.env}
+    environment:
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped

@@ -1,0 +1,102 @@
+version: 1
+name: polybtc_impulse_momentum_profiles
+market: polymarket_btc_updown_5m
+
+strategy_reference:
+  style: momentum_follow_through_into_close
+  entry_window_seconds_left_target: 120
+  entry_window_seconds_left_tolerance: 30
+  btc_move_usd_min: 70
+  btc_move_usd_max_reference: 100
+  skew_bias_note: "Prefer direction supported by market skew when momentum is already established."
+  sizing_note: "Typical discretionary sizing can be up to ~50% of allocated trading balance; tune risk per user preference."
+  optional_hedge_note: "When skew is extreme (for example >=95/5), allow a small opposite hedge to reduce last-second reversal risk."
+
+shared_rules:
+  market_validation:
+    require_active: true
+    require_not_closed: true
+    require_end_in_future_sec_min: 5
+    candidate_slots: ["prev", "current", "next", "next2"]
+    choose: "closest_valid"
+  heartbeat:
+    enabled: true
+    max_stale_sec: 15
+    check_interval_sec: 5
+    fail_action: "skip"
+  execution_safety:
+    skip_if_quote_stale_sec_gt: 8
+    skip_if_dns_or_api_errors_consecutive: 3
+    skip_if_spread_gt: 0.03
+    skip_if_top_ask_notional_usd_lt: 30
+  session_timing:
+    monitor_continuous: true
+    min_entry_seconds_left: 60
+    exit_before_sec: 20
+
+profiles:
+  conservative:
+    description: "More stable mode: stricter filters and lower per-trade risk."
+    signal:
+      trigger_source: "clob_best_ask"
+      direction_rule: "follow_stronger_side_over_threshold"
+      threshold_price: 0.70
+    sizing:
+      stake_mode: "fixed_or_cap"
+      stake_usd: 5
+      risk_per_trade_pct_equity: 8
+      max_notional_usd: 8
+      daily_max_loss_pct: 10
+      max_trades_per_day: 12
+    hedge:
+      enabled: true
+      trigger_side_price_gte: 0.95
+      trigger_seconds_left_lte: 45
+      hedge_share_of_main_pct: 3
+      hedge_notional_usd_min: 1
+      hedge_notional_usd_max: 2
+    stop_loss:
+      enabled: true
+      stop_loss_pct_from_entry: 0.25
+
+  aggressive:
+    description: "Higher frequency and higher risk mode."
+    signal:
+      trigger_source: "clob_best_ask"
+      direction_rule: "follow_stronger_side_over_threshold"
+      threshold_price: 0.70
+    sizing:
+      stake_mode: "fixed_or_cap"
+      stake_usd: 5
+      risk_per_trade_pct_equity: 15
+      max_notional_usd: 15
+      daily_max_loss_pct: 15
+      max_trades_per_day: 20
+    hedge:
+      enabled: true
+      trigger_side_price_gte: 0.93
+      trigger_seconds_left_lte: 50
+      hedge_share_of_main_pct: 5
+      hedge_notional_usd_min: 1
+      hedge_notional_usd_max: 3
+    stop_loss:
+      enabled: true
+      stop_loss_pct_from_entry: 0.30
+
+runner_mapping:
+  script: "skills/polybtc-momentum/scripts/test_polybtc_session_exit_sl.py"
+  direct_flags_now_supported:
+    - "--threshold"
+    - "--stake-usd"
+    - "--stop-loss-pct"
+    - "--exit-before-sec"
+    - "--min-entry-seconds-left"
+    - "--entry-timeout-min"
+    - "--poll-sec"
+    - "--execute"
+  example_conservative_now: ".venv/bin/python scripts/test_polybtc_session_exit_sl.py --threshold 0.70 --stake-usd 4 --stop-loss-pct 0.25 --exit-before-sec 20 --min-entry-seconds-left 60 --entry-timeout-min 60 --poll-sec 5 --execute"
+  example_aggressive_now: ".venv/bin/python scripts/test_polybtc_session_exit_sl.py --threshold 0.70 --stake-usd 6 --stop-loss-pct 0.30 --exit-before-sec 20 --min-entry-seconds-left 60 --entry-timeout-min 60 --poll-sec 5 --execute"
+
+notes:
+  - "Current 5m runner uses threshold/side-strength logic; impulse filter integration can be extended at strategy layer."
+  - "Entry behavior: continuous CLOB ask monitoring; if UP/DOWN >= threshold, enter on stronger side."
