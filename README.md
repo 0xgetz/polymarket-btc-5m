@@ -45,6 +45,24 @@ This skill is aligned with a short-horizon momentum strategy:
 
 This is a momentum-following approach, not a reversal strategy.
 
+## 📊 Realistic Expectations — No Guaranteed Profit
+
+This is a high-variance speculative strategy. **No setup can guarantee profit**,
+and anyone promising a "99% win rate" is misleading you. The payoff is
+asymmetric — you buy a side at price `p`, so your **break-even win-rate equals
+`p`**: you must be right *more* than `p`% of the time just to avoid losing money.
+
+| Entry price | Win payoff ($5 stake) | Loss | Break-even win-rate |
+|---|---|---|---|
+| 0.71 | +$2.04 | −$5.00 | **> 71%** |
+| 0.90 | +$0.56 | −$5.00 | **> 90%** |
+| 0.95 | +$0.26 | −$5.00 | **> 95%** |
+
+At 0.71 a single loss erases ~2.4 wins. The realistic objective is a **measured,
+positive edge with strict capital protection** — not guaranteed wins. Use the
+analytics, edge, and guardrail tools (see [Tooling & Validation](#-tooling--validation))
+to verify your real win-rate and block negative-expectation trades.
+
 ## Repository Structure
 - `SKILL.md` — skill definition and operating rules
 - `config/` — profiles and risk parameters
@@ -139,10 +157,35 @@ Example output (exit code `0` = GO, `1` = NO-GO):
               "spread": true, "liquidity": true, "threshold_side": true } }
 ```
 
+### Trade analytics / log backtest
+Measure the **real** win-rate, expectancy, profit factor, max drawdown, and
+streaks from your runtime logs — the only honest way to know whether the edge is
+positive before sizing up:
+
+```bash
+python scripts/polybtc_analytics.py --runtime-dir ./runtime --limit 200
+python scripts/polybtc_analytics.py --breakeven   # break-even win-rate per price
+```
+
+### Capital-protection guardrails
+Consecutive-loss kill switch, daily max-loss cap, trade ceiling, and a
+positive-edge gate. Replay PnLs to see exactly when trading gets blocked:
+
+```bash
+python scripts/polybtc_guardrails.py --profile conservative \
+  --equity 200 --pnls=-5,-5,-5 --entry 0.71 --win-prob 0.80
+```
+
+### Edge / break-even calculator
+```bash
+python scripts/polybtc_edge.py --entry 0.71 --win-prob 0.80 --stake 5
+python scripts/polybtc_edge.py --table
+```
+
 ### Tests & CI
 ```bash
 pip install -r requirements-dev.txt
-pytest -q          # 21 unit tests covering config + preflight logic
+pytest -q          # 48 unit tests: config, preflight, edge, guardrails, analytics
 ```
 CI runs bash/Python syntax checks, config validation, and the test suite on
 every push and pull request.

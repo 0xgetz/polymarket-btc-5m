@@ -5,6 +5,18 @@ All notable changes to this project are documented here.
 ## [Unreleased]
 
 ### Added
+- **Trade analytics / log backtest** (`scripts/polybtc_analytics.py`): computes
+  real win-rate, expectancy, profit factor, max drawdown, win/loss streaks, and
+  per-side breakdown from runtime logs. Pure `compute_stats` engine + CLI.
+- **Capital-protection guardrails** (`scripts/polybtc_guardrails.py`):
+  consecutive-loss kill switch, daily max-loss cap, max-trades-per-day ceiling,
+  and a positive-edge (EV) gate. Pure, deterministic, with a replay CLI.
+- **Edge / break-even calculator** (`scripts/polybtc_edge.py`): payoff math,
+  break-even win-rate, edge, and expected value as a library + CLI.
+- New `risk_controls` block per profile (`max_consecutive_losses`, `min_edge`),
+  validated by the config validator and exposed via `get_profile`.
+- Expanded test suite to **48 cases** covering config, preflight, edge,
+  guardrails, and analytics.
 - **Config loader & validator** (`scripts/polybtc_config.py`): loads and
   validates `config/polybtc_profiles.yaml`, and resolves a single flattened
   profile (shared rules + strategy reference + per-profile settings) so the

@@ -48,6 +48,9 @@ profiles:
       max_notional_usd: 8
       daily_max_loss_pct: 10
       max_trades_per_day: 12
+    risk_controls:
+      max_consecutive_losses: 3
+      min_edge: 0.02
     hedge:
       enabled: true
       trigger_side_price_gte: 0.95
@@ -72,6 +75,9 @@ profiles:
       max_notional_usd: 15
       daily_max_loss_pct: 15
       max_trades_per_day: 20
+    risk_controls:
+      max_consecutive_losses: 5
+      min_edge: 0.01
     hedge:
       enabled: true
       trigger_side_price_gte: 0.93

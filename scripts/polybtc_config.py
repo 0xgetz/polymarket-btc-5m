@@ -160,6 +160,18 @@ def validate_config(cfg: Dict[str, Any]) -> List[str]:
                 f"profile '{pname}': stop_loss.stop_loss_pct_from_entry must be in (0, 1)",
             )
 
+        rc = prof.get("risk_controls", {})
+        if rc:
+            require(
+                _num(rc.get("max_consecutive_losses")) and rc["max_consecutive_losses"] >= 1,
+                f"profile '{pname}': risk_controls.max_consecutive_losses must be >= 1",
+            )
+            if "min_edge" in rc:
+                require(
+                    _num(rc.get("min_edge")) and 0 <= rc["min_edge"] < 1,
+                    f"profile '{pname}': risk_controls.min_edge must be in [0, 1)",
+                )
+
     return errors
 
 
@@ -182,6 +194,8 @@ def get_profile(cfg: Dict[str, Any], name: str) -> Dict[str, Any]:
         "daily_max_loss_pct": float(prof["sizing"]["daily_max_loss_pct"]),
         "max_trades_per_day": int(prof["sizing"]["max_trades_per_day"]),
         "risk_per_trade_pct_equity": float(prof["sizing"].get("risk_per_trade_pct_equity", 0)),
+        "max_consecutive_losses": int(prof.get("risk_controls", {}).get("max_consecutive_losses", 3)),
+        "min_edge": float(prof.get("risk_controls", {}).get("min_edge", 0.0)),
         "hedge": dict(prof.get("hedge", {})),
         "stop_loss": dict(prof.get("stop_loss", {})),
         # shared execution safety
