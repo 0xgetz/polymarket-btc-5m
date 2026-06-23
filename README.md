@@ -182,10 +182,43 @@ python scripts/polybtc_edge.py --entry 0.71 --win-prob 0.80 --stake 5
 python scripts/polybtc_edge.py --table
 ```
 
+### Dry-run (paper trading)
+Run the **same decision logic as live but place no order** — record simulated
+trades in the same log format, so the analytics/summary tools work identically.
+Record each resolved 5m market:
+
+```bash
+python scripts/polybtc_dryrun.py --profile conservative \
+  --seconds-left 118 --btc-move-usd 84 \
+  --up-ask 0.71 --dn-ask 0.29 --spread 0.02 \
+  --top-ask-notional 41 --quote-age-sec 1 \
+  --market-slug btc-updown-5m-1430 --outcome win
+```
+`--outcome` is the resolved result: `win` / `loss`, or the winning side
+`UP` / `DOWN`. Paper logs land in `runtime/` (gitignored). **Validate the real
+edge over several days before risking money** — at break-even 0.71 even a 67%
+win-rate still loses money.
+
+### Automated daily summary
+Aggregate a day's logs (paper or live) into a digest — win-rate, net PnL,
+profit factor, drawdown, and risk-limit flags:
+
+```bash
+python scripts/polybtc_daily_summary.py --profile conservative --equity 200
+```
+Automate it with cron via the wrapper (writes Markdown to `runtime/daily/` and
+can POST to a Slack / Discord / Telegram webhook):
+
+```bash
+# every day at 00:10 UTC, summarise the previous day
+10 0 * * * /path/to/polymarket-btc-5m/scripts/polybtc_daily_cron.sh >> /tmp/polybtc_daily.log 2>&1
+```
+Optional env overrides: `POLYBTC_PROFILE`, `POLYBTC_EQUITY`, `POLYBTC_WEBHOOK`.
+
 ### Tests & CI
 ```bash
 pip install -r requirements-dev.txt
-pytest -q          # 48 unit tests: config, preflight, edge, guardrails, analytics
+pytest -q          # 60 unit tests: config, preflight, edge, guardrails, analytics, dry-run, summary
 ```
 CI runs bash/Python syntax checks, config validation, and the test suite on
 every push and pull request.

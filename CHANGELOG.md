@@ -5,6 +5,15 @@ All notable changes to this project are documented here.
 ## [Unreleased]
 
 ### Added
+- **Dry-run (paper trading) recorder** (`scripts/polybtc_dryrun.py`): runs the
+  real preflight decision but places no order, recording simulated trades in the
+  live log format so analytics/summary tools work identically. Validate the real
+  edge before risking money.
+- **Daily summary** (`scripts/polybtc_daily_summary.py` + cron wrapper
+  `scripts/polybtc_daily_cron.sh`): aggregates a day's logs into win-rate, net
+  PnL, profit factor, drawdown, and risk-limit flags; writes Markdown and can
+  POST to a Slack/Discord/Telegram webhook. Automate via crontab.
+- Test suite expanded to **60 cases** (added dry-run and daily-summary tests).
 - **Trade analytics / log backtest** (`scripts/polybtc_analytics.py`): computes
   real win-rate, expectancy, profit factor, max drawdown, win/loss streaks, and
   per-side breakdown from runtime logs. Pure `compute_stats` engine + CLI.

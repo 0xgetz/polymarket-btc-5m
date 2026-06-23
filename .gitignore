@@ -5,3 +5,6 @@ __pycache__/
 
 # stray syntax-check temp file
 err
+
+# runtime artifacts: paper-trade logs and daily summaries
+runtime/
