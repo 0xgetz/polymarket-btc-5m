@@ -2,3 +2,6 @@ __pycache__/
 *.pyc
 .env
 .env.*
+
+# stray syntax-check temp file
+err
