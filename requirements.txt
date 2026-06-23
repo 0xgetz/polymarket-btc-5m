@@ -1,0 +1,2 @@
+# Runtime dependency for the config loader / preflight tools.
+PyYAML>=6.0

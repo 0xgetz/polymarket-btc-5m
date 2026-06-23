@@ -6,11 +6,13 @@
 
 **Open-source OpenClaw skill for BTC 5-minute Up/Down momentum trading on Polymarket**
 
+[![CI](https://github.com/0xgetz/polymarket-btc-5m/actions/workflows/ci.yml/badge.svg)](https://github.com/0xgetz/polymarket-btc-5m/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/python-3.12-blue)
 ![Shell](https://img.shields.io/badge/shell-bash-green)
 ![Platform](https://img.shields.io/badge/platform-OpenClaw-black)
 ![Market](https://img.shields.io/badge/market-Polymarket%20BTC%205m-6f42c1)
 ![Strategy](https://img.shields.io/badge/strategy-momentum--into--close-orange)
+![License](https://img.shields.io/badge/license-MIT-blue)
 [![Donasi Saweria](https://img.shields.io/badge/%E2%9D%A4%20Donasi-Saweria-ff5e00?style=for-the-badge)](https://saweria.co/0xgetz)
 
 [**Repository**](https://github.com/0xgetz/polymarket-btc-5m)
@@ -46,9 +48,11 @@ This is a momentum-following approach, not a reversal strategy.
 ## Repository Structure
 - `SKILL.md` — skill definition and operating rules
 - `config/` — profiles and risk parameters
-- `scripts/` — runners/wrappers/hot commands
+- `scripts/` — runners/wrappers/hot commands + validation tools
 - `examples/` — practical command examples
 - `assets/` — logo and demo GIFs
+- `tests/` — pytest unit tests (config + preflight logic)
+- `.github/workflows/` — CI (lint, compile, config validation, tests)
 
 ## Deploy / Run
 ### Prerequisites
@@ -98,6 +102,50 @@ scripts/polybtc_docker.sh up
 scripts/polybtc_docker.sh status
 scripts/polybtc_docker.sh down
 ```
+
+## 🧪 Tooling & Validation
+
+Two self-contained helper tools make the strategy testable and safe to tweak —
+no network or order placement, fully deterministic.
+
+### Config validator
+Validates `config/polybtc_profiles.yaml` (schema + value ranges) and resolves a
+flattened profile used across the codebase:
+
+```bash
+pip install -r requirements.txt
+python scripts/polybtc_config.py --validate
+python scripts/polybtc_config.py --profile conservative --show
+```
+
+### Preflight gate (Execution Checklist as code)
+A GO / NO-GO decision engine implementing the checklist below. Feed it a market
+snapshot and it returns the chosen side, recommended stake, stop-loss price,
+optional near-close micro-hedge, and per-check pass/fail reasons:
+
+```bash
+python scripts/polybtc_preflight.py --profile conservative \
+  --seconds-left 118 --btc-move-usd 84 \
+  --up-ask 0.71 --dn-ask 0.29 \
+  --spread 0.02 --top-ask-notional 41 --quote-age-sec 1
+```
+
+Example output (exit code `0` = GO, `1` = NO-GO):
+
+```json
+{ "ok": true, "side": "UP", "entry_price": 0.71, "stake_usd": 5.0,
+  "stop_loss_price": 0.5325, "hedge": null,
+  "checks": { "time_to_close": true, "impulse_move": true, "quote_fresh": true,
+              "spread": true, "liquidity": true, "threshold_side": true } }
+```
+
+### Tests & CI
+```bash
+pip install -r requirements-dev.txt
+pytest -q          # 21 unit tests covering config + preflight logic
+```
+CI runs bash/Python syntax checks, config validation, and the test suite on
+every push and pull request.
 
 ## Execution Checklist (Before Live Trade)
 Use this quick pre-flight checklist before any real order:
