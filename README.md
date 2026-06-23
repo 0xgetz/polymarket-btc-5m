@@ -1,14 +1,35 @@
+<div align="center">
+
+<img src="assets/logo.png" alt="PolyBTC Momentum" width="220"/>
+
 # PolyBTC Momentum Skill
+
+**Open-source OpenClaw skill for BTC 5-minute Up/Down momentum trading on Polymarket**
 
 ![Python](https://img.shields.io/badge/python-3.12-blue)
 ![Shell](https://img.shields.io/badge/shell-bash-green)
 ![Platform](https://img.shields.io/badge/platform-OpenClaw-black)
 ![Market](https://img.shields.io/badge/market-Polymarket%20BTC%205m-6f42c1)
 ![Strategy](https://img.shields.io/badge/strategy-momentum--into--close-orange)
+[![Donasi Saweria](https://img.shields.io/badge/%E2%9D%A4%20Donasi-Saweria-ff5e00?style=for-the-badge)](https://saweria.co/0xgetz)
 
-Open-source OpenClaw skill for **BTC 5-minute Up/Down** markets on Polymarket.
+[**Repository**](https://github.com/0xgetz/polymarket-btc-5m)
 
-Repository: https://github.com/0xgetz/polymarket-btc-5m
+</div>
+
+---
+
+## 🎬 Demo
+
+### Live Trading Session (conservative profile)
+<p align="center"><img src="assets/demo-trading.gif" alt="PolyBTC Momentum live trading session" width="820"/></p>
+
+> Resolve BTC 5m market → confirm move + skew → enter with momentum → managed exit before close.
+
+### Status & PnL Report
+<p align="center"><img src="assets/demo-report.gif" alt="PolyBTC Momentum status and report" width="820"/></p>
+
+---
 
 ## Strategy (Momentum into Close)
 This skill is aligned with a short-horizon momentum strategy:
@@ -27,6 +48,7 @@ This is a momentum-following approach, not a reversal strategy.
 - `config/` — profiles and risk parameters
 - `scripts/` — runners/wrappers/hot commands
 - `examples/` — practical command examples
+- `assets/` — logo and demo GIFs
 
 ## Deploy / Run
 ### Prerequisites
@@ -109,6 +131,24 @@ Suggested baseline controls (adapt to your risk profile):
 - **Liquidity guard**: skip when top ask/bid notional is too thin
 - **Extreme skew hedge**: optional small opposite hedge in 95/5-type scenarios
 - **Operational kill switch**: immediate stop on repeated API/DNS/execution failures
+
+## 💖 Dukung Proyek Ini
+
+Jika skill ini bermanfaat untuk trading atau riset Anda, dukung pengembangannya:
+
+<div align="center">
+
+[![Donasi di Saweria](https://img.shields.io/badge/%E2%9D%A4%20Donasi%20di%20Saweria-0xgetz-ff5e00?style=for-the-badge&logo=buymeacoffee&logoColor=white)](https://saweria.co/0xgetz)
+
+</div>
+
+Donasi membantu untuk:
+- 🖥️ Biaya server & data feed untuk pengujian strategi
+- ✨ Pengembangan fitur baru (filter impulse, multi-market, dashboard)
+- 📚 Dokumentasi & contoh penggunaan yang lebih lengkap
+- 🐛 Perbaikan bug dan pemeliharaan rutin
+
+🔗 **https://saweria.co/0xgetz**
 
 ## Risk Notice
 This repository is educational/operational infrastructure, not financial advice.
