@@ -3,8 +3,12 @@
 All notable changes to this project are documented here.
 
 ## [Unreleased]
-
 ### Added
+- **Environment template** (`.env.example`) documenting safe local defaults for
+  runtime path, profile, equity baseline, webhook, and runner overrides without
+  committing secrets.
+- **Dependabot configuration** (`.github/dependabot.yml`) for weekly Python and
+  GitHub Actions dependency update pull requests.
 - **Dry-run (paper trading) recorder** (`scripts/polybtc_dryrun.py`): runs the
   real preflight decision but places no order, recording simulated trades in the
   live log format so analytics/summary tools work identically. Validate the real
@@ -43,6 +47,12 @@ All notable changes to this project are documented here.
   push and pull request.
 - `requirements.txt`, `requirements-dev.txt`, `.env.example`, `LICENSE` (MIT),
   and this changelog.
+
+### Changed
+- Expanded `.gitignore` to ignore pytest/coverage artifacts while explicitly
+  allowing `.env.example` to remain tracked.
+- Added `ruff` to development dependencies so Python linting can be run locally
+  with `ruff check scripts tests`.
 
 ### Notes
 - Surfaced a latent config nuance: the entry-time gate
