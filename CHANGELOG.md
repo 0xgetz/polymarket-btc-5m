@@ -4,6 +4,19 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 ### Added
+- **CSV historical backtester** (`scripts/polybtc_backtest.py`) that replays
+  market snapshots through the same preflight logic used by live/dry-run tooling
+  and reports win-rate, net PnL, expectancy, profit factor, max drawdown,
+  side-level breakdowns, and optional per-trade detail.
+- **EV gate for backtests** (`--ev-gate --min-edge`) that requires
+  `estimated_win_prob - entry_price` to clear a configurable minimum edge before
+  a simulated trade is included.
+- **Sample backtest dataset** (`examples/polybtc_backtest_sample_data.csv`) for
+  testing the CSV schema and CLI quickly.
+- **Backtesting guide** (`docs/BACKTESTING.md`) explaining the CSV schema,
+  output fields, EV gate, and a practical paper-to-backtest workflow.
+- **Backtester tests** (`tests/test_backtest.py`) covering signal replay,
+  EV-gated skips, and `win` / `loss` outcome aliases.
 - **Environment template** (`.env.example`) documenting safe local defaults for
   runtime path, profile, equity baseline, webhook, and runner overrides without
   committing secrets.
