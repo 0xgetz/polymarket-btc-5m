@@ -3,6 +3,21 @@
 All notable changes to this project are documented here.
 
 ## [Unreleased]
+### Fixed (audit / live safety)
+- **Wire preflight + capital guardrails into the live runner** before any open order
+  (time, BTC impulse via Binance 5m candle, spread, liquidity, threshold side).
+- **Single profile source of truth**: live runner loads `config/polybtc_profiles.yaml`
+  via `polybtc_config` (removed hardcoded live `PROFILES` dict).
+- **Stop-loss mark uses CLOB best bid** (executable exit), not Gamma mid prices.
+- **Close limit floor**: force/GTC close prices cannot dump below
+  `entry * (1 - max_close_slippage)` (no more 0.01 fire-sale by default).
+- **Open-order env no longer disables spread/liquidity** (`PM_MAX_SPREAD` /
+  `PM_MIN_TOP_ASK_NOTIONAL_USD` now come from the profile).
+- **`polybtc_ctl.sh` defaults to dry-run**; real money requires `--live` / `--execute`.
+- **Graceful stop**: SIGTERM with wait before SIGKILL; lockfile + open-position warning.
+- **Watcher** defaults to dry-run, uses a lockfile, and stops on guardrail block.
+- Added `scripts/polybtc_live_safety.py` + tests; `requirements-live.txt` for CLOB client.
+
 ### Added
 - **CSV historical backtester** (`scripts/polybtc_backtest.py`) that replays
   market snapshots through the same preflight logic used by live/dry-run tooling
@@ -13,7 +28,7 @@ All notable changes to this project are documented here.
   a simulated trade is included.
 - **Sample backtest dataset** (`examples/polybtc_backtest_sample_data.csv`) for
   testing the CSV schema and CLI quickly.
-- **Backtesting guide** (`docs/BACKTESTING.md`) explaining the CSV schema,
+- **Backtesting guide** (`BACKTESTING.md`) explaining the CSV schema,
   output fields, EV gate, and a practical paper-to-backtest workflow.
 - **Backtester tests** (`tests/test_backtest.py`) covering signal replay,
   EV-gated skips, and `win` / `loss` outcome aliases.
