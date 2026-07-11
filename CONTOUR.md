@@ -35,3 +35,7 @@
 - Keep all new BTC 5m automation pointing to canonical runner only.
 - Active completion cron in this contour:
   - `polybtc-completion-autoreport-topic184` (`36d3b9e6-4638-4e93-80f6-abb268ebbe57`)
+
+## Safety (post-audit)
+- `polybtc_ctl.sh start` is dry-run unless `--live`.
+- Live runner gates via preflight + guardrails; YAML is the only profile source.
