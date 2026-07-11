@@ -21,7 +21,9 @@ Use this skill when the operator wants to execute a BTC 5m momentum strategy:
 - Optional small opposite hedge when skew becomes extreme.
 
 ## Operational Rules
-- Default is dry-run unless `--execute` is set.
+- Default is dry-run unless `--execute` / `polybtc_ctl.sh --live` is set.
+- Live path runs preflight + capital guardrails before any open order.
+- Profile parameters come from `config/polybtc_profiles.yaml` only.
 - Use controlled stake sizing (`--stake-usd`, profile caps).
 - If both UP and DOWN satisfy threshold logic, choose the stronger side.
 - Keep stop-loss and timing guards enabled in profile config.
