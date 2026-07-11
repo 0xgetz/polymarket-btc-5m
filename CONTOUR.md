@@ -39,3 +39,5 @@
 ## Safety (post-audit)
 - `polybtc_ctl.sh start` is dry-run unless `--live`.
 - Live runner gates via preflight + guardrails; YAML is the only profile source.
+- Canonical runner impl: `scripts/_psr_impl.py` (readable); `session_runner.b64.*` is bootstrap fallback only.
+- Entry points: `scripts/test_polybtc_session_exit_sl.py` → `polybtc_session_runner.main`.

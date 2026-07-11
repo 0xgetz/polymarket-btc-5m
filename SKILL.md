@@ -28,14 +28,22 @@ Use this skill when the operator wants to execute a BTC 5m momentum strategy:
 - If both UP and DOWN satisfy threshold logic, choose the stronger side.
 - Keep stop-loss and timing guards enabled in profile config.
 
-## One-shot real test
-From trading repo root:
+## One-shot session
+From trading repo root. **Dry-run first** (default — no orders):
+
+```bash
+.venv/bin/python scripts/test_polybtc_session_exit_sl.py --profile conservative
+# or: scripts/polybtc_ctl.sh start --profile conservative
+```
+
+Live only after validation (explicit flag required):
 
 ```bash
 .venv/bin/python scripts/test_polybtc_session_exit_sl.py --profile conservative --execute
+scripts/polybtc_ctl.sh start --profile conservative --live
 ```
 
-Aggressive profile:
+Aggressive profile (live):
 
 ```bash
 .venv/bin/python scripts/test_polybtc_session_exit_sl.py --profile aggressive --execute

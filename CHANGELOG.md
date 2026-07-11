@@ -17,6 +17,8 @@ All notable changes to this project are documented here.
 - **Graceful stop**: SIGTERM with wait before SIGKILL; lockfile + open-position warning.
 - **Watcher** defaults to dry-run, uses a lockfile, and stops on guardrail block.
 - Added `scripts/polybtc_live_safety.py` + tests; `requirements-live.txt` for CLOB client.
+- **Readable session-runner source** (`scripts/_psr_impl.py`) preferred over b64
+  bootstrap; examples/SKILL show dry-run-first paths.
 
 ### Added
 - **CSV historical backtester** (`scripts/polybtc_backtest.py`) that replays
