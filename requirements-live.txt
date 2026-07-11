@@ -1,0 +1,3 @@
+# Live trading extras (install inside the Polymarket execution venv)
+-r requirements.txt
+py-clob-client>=0.34.0
