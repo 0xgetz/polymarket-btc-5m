@@ -65,11 +65,13 @@ to verify your real win-rate and block negative-expectation trades.
 
 ## Repository Structure
 - `SKILL.md` — skill definition and operating rules
-- `config/` — profiles and risk parameters
-- `scripts/` — runners/wrappers/hot commands + validation tools
-- `examples/` — practical command examples
+- `CONTOUR.md` — canonical execution path + post-audit safety notes
+- `BACKTESTING.md` — CSV historical backtest guide
+- `config/` — profiles and risk parameters (`polybtc_profiles.yaml` is the single source of truth)
+- `scripts/` — runners/wrappers/hot commands + validation / live-safety helpers
+- `examples/` — practical command examples + sample backtest CSV
 - `assets/` — logo and demo GIFs
-- `tests/` — pytest unit tests (config + preflight logic)
+- `tests/` — pytest unit tests (config, preflight, edge, guardrails, analytics, dry-run, summary, live safety, backtest)
 - `.github/workflows/` — CI (lint, compile, config validation, tests)
 
 ## Deploy / Run
@@ -90,23 +92,45 @@ Read:
 - `SKILL.md`
 - `config/polybtc_profiles.yaml`
 
-Run a conservative real test (example):
+Dry-run first (default — no orders):
 ```bash
-.venv/bin/python scripts/test_polybtc_session_exit_sl.py --profile conservative --execute
+.venv/bin/python scripts/test_polybtc_session_exit_sl.py --profile conservative
+# or:
+scripts/polybtc_ctl.sh start --profile conservative
 ```
 
-Run aggressive profile:
+Live only after validation (explicit flag required):
 ```bash
-.venv/bin/python scripts/test_polybtc_session_exit_sl.py --profile aggressive --execute
+.venv/bin/python scripts/test_polybtc_session_exit_sl.py --profile conservative --execute
+scripts/polybtc_ctl.sh start --profile conservative --live
 ```
 
 Unified skill control (recommended):
 ```bash
-scripts/polybtc_ctl.sh start --profile conservative
+scripts/polybtc_ctl.sh start --profile conservative          # dry-run
+scripts/polybtc_ctl.sh start --profile conservative --live   # real orders
 scripts/polybtc_ctl.sh status
 scripts/polybtc_ctl.sh report --limit 20
-scripts/polybtc_ctl.sh stop
+scripts/polybtc_ctl.sh stop   # SIGTERM first; may leave open positions if killed mid-trade
 ```
+
+### Live safety (post-audit)
+
+Defaults and gates are designed so real money is hard to enable by accident:
+
+| Control | Behavior |
+|---|---|
+| **Default mode** | Dry-run (no orders). Real placement needs `--execute` or `polybtc_ctl.sh --live`. |
+| **Preflight gate** | Time-to-close, BTC impulse (Binance 5m candle), quote freshness, spread, liquidity, threshold side — **before** any open. |
+| **Capital guardrails** | Consecutive-loss kill switch, daily max-loss %, max trades/day, optional EV/edge gate. |
+| **Profile source** | `config/polybtc_profiles.yaml` only (via `polybtc_config`; no hardcoded live profile dict). |
+| **Stop-loss mark** | CLOB **best bid** (executable exit), not Gamma mid prices. |
+| **Close limit floor** | Force/GTC close cannot dump below `entry * (1 - max_close_slippage)` (no default 0.01 fire-sale). |
+| **Open-order env** | Spread / top-ask notional guards stay on; values come from the profile (`PM_MAX_SPREAD`, `PM_MIN_TOP_ASK_NOTIONAL_USD`). |
+| **Stop semantics** | `polybtc_ctl.sh stop` sends SIGTERM first (wait), then SIGKILL; lockfile + open-position warning. |
+| **Watcher** | `watch_polybtc_threshold_and_enter.sh` defaults to dry-run, uses a lockfile, stops on guardrail block. |
+
+Pure helpers live in `scripts/polybtc_live_safety.py` (unit-tested, no network). Live CLOB client deps are listed in `requirements-live.txt`.
 
 Runtime isolation:
 - skill runtime dir: `./runtime`
@@ -176,6 +200,15 @@ python scripts/polybtc_guardrails.py --profile conservative \
   --equity 200 --pnls=-5,-5,-5 --entry 0.71 --win-prob 0.80
 ```
 
+### Live safety helpers (unit-testable)
+Close-limit floor, open-order env (never disables spread/liquidity), stop-loss
+price math, and guard-state builders shared by the live runner:
+
+```bash
+# covered by tests/test_live_safety.py — no network
+pytest tests/test_live_safety.py -q
+```
+
 ### Edge / break-even calculator
 ```bash
 python scripts/polybtc_edge.py --entry 0.71 --win-prob 0.80 --stake 5
@@ -218,7 +251,7 @@ Optional env overrides: `POLYBTC_PROFILE`, `POLYBTC_EQUITY`, `POLYBTC_WEBHOOK`.
 ### Tests & CI
 ```bash
 pip install -r requirements-dev.txt
-pytest -q          # 60 unit tests: config, preflight, edge, guardrails, analytics, dry-run, summary
+pytest -q          # unit tests: config, preflight, edge, guardrails, analytics, dry-run, summary, live safety
 ```
 CI runs bash/Python syntax checks, config validation, and the test suite on
 every push and pull request.
@@ -244,17 +277,21 @@ Use this quick pre-flight checklist before any real order:
    - Start in dry-run when changing parameters; switch to `--execute` only after validation.
 
 ## Risk Controls Template
-Suggested baseline controls (adapt to your risk profile):
+Suggested baseline controls (adapt to your risk profile; defaults live in
+`config/polybtc_profiles.yaml` and are enforced on the live path):
 
 - **Per-trade risk cap**: 1%-15% of account equity (profile dependent)
 - **Daily max loss**: hard stop at 10%-15%
+- **Max consecutive losses**: kill switch (e.g. 3 conservative / 5 aggressive)
 - **Max trades/day**: fixed ceiling to avoid overtrading
 - **Max notional/trade**: strict upper bound
 - **Quote staleness guard**: skip if market data is stale
-- **Spread guard**: skip when spread exceeds threshold
+- **Spread guard**: skip when spread exceeds threshold (also applied to child open-order env)
 - **Liquidity guard**: skip when top ask/bid notional is too thin
+- **Stop-loss on executable bid**: mark SL off CLOB best bid; close limit respects slippage floor
 - **Extreme skew hedge**: optional small opposite hedge in 95/5-type scenarios
 - **Operational kill switch**: immediate stop on repeated API/DNS/execution failures
+- **Graceful process stop**: SIGTERM → wait → SIGKILL; do not assume positions are flat after `stop`
 
 ## 💖 Dukung Proyek Ini
 
