@@ -38,7 +38,13 @@ def test_shipped_config_is_valid(cfg):
 
 
 def test_expected_profiles_present(cfg):
-    assert {"conservative", "aggressive", "high_confidence", "observe"} <= set(cfg["profiles"])
+    assert {
+        "conservative",
+        "aggressive",
+        "high_confidence",
+        "observe",
+        "micro_10",
+    } <= set(cfg["profiles"])
 
 
 def test_get_profile_flattens_fields(conservative):
@@ -380,6 +386,15 @@ def test_observe_profile_loads(cfg):
     assert prof["btc_move_usd_min"] <= 40
     assert prof["require_ev_gate"] is False
     assert prof["threshold_price"] <= 0.60
+
+
+def test_micro_10_profile_caps(cfg):
+    prof = cfgmod.get_profile(cfg, "micro_10")
+    assert prof["stake_usd"] == 1.0
+    assert prof["max_notional_usd"] == 1.0
+    assert prof["max_trades_per_day"] <= 5
+    assert prof["max_consecutive_losses"] <= 2
+    assert prof["hedge"].get("enabled") is False
 
 
 def test_nogo_on_thin_liquidity(conservative):

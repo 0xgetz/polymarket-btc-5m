@@ -38,7 +38,7 @@ mkdir -p "$RUNTIME_DIR"
 usage() {
   cat <<'USAGE'
 Usage:
-  polybtc_ctl.sh start [--profile conservative|aggressive|high_confidence] [--live] [runner flags...]
+  polybtc_ctl.sh start [--profile conservative|aggressive|high_confidence|observe|micro_10] [--live] [runner flags...]
   polybtc_ctl.sh status
   polybtc_ctl.sh stop
   polybtc_ctl.sh report [--limit N]

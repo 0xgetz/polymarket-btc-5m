@@ -230,6 +230,60 @@ profiles:
         min_adverse_from_entry: 0.025
         on_btc_reverse: true
 
+  # Micro live test with ~10 USDT total bankroll.
+  # Per-trade $1, hard notional $1, few trades/day, tight daily loss vs equity=10.
+  micro_10:
+    description: "Tiny live test bankroll (~10 USDT): $1 stakes, hard risk caps. Still can lose the whole stack over time."
+    signal:
+      trigger_source: "clob_best_ask"
+      direction_rule: "follow_stronger_side_over_threshold"
+      threshold_price: 0.70
+      max_entry_price: 0.92
+      require_move_aligned: true
+      require_entry_window: true
+      btc_move_usd_min: 70
+      btc_move_usd_max: 180
+      min_skew_gap: 0.18
+      confirm_polls: 2
+      require_1m_aligned: true
+    sizing:
+      stake_mode: "fixed_or_cap"
+      stake_usd: 1
+      risk_per_trade_pct_equity: 10
+      max_notional_usd: 1
+      daily_max_loss_pct: 20
+      max_trades_per_day: 5
+      loss_streak_scale:
+        enabled: true
+        after_losses: 1
+        scale_per_loss: 0.5
+        min_scale: 0.5
+    risk_controls:
+      max_consecutive_losses: 2
+      min_edge: 0.02
+      require_ev_gate: true
+    session_filter:
+      enabled: true
+      require_hour: false
+      block_hours_utc: [0, 1, 2, 3, 4]
+    hedge:
+      enabled: false
+    stop_loss:
+      enabled: true
+      stop_loss_pct_from_entry: 0.25
+    exit_policy:
+      enabled: true
+      hold_to_resolve:
+        enabled: true
+        min_bid: 0.95
+        max_seconds_left: 45
+        exit_before_sec: 3
+      early_cut:
+        enabled: true
+        max_seconds_left: 40
+        min_adverse_from_entry: 0.03
+        on_btc_reverse: true
+
   # Observe-only research profile: looser gates to collect more GO candidates in logs.
   # NOT for live money — use with polybtc_live_logger / dry-run only.
   observe:
@@ -309,5 +363,6 @@ notes:
   - "stake_mode edge_scaled: stake grows with heuristic edge between min_scale and max_scale."
   - "loss_streak_scale: soft size-down after consecutive losses before kill switch."
   - "observe profile: looser research gates for live_logger / dry-run only — not live money."
+  - "micro_10: ~10 USDT bankroll test — stake $1, max_notional $1, max 5 trades/day, equity=10."
   - "high_confidence aims for quality over frequency — not a guaranteed 90% win rate."
   - "Buying at price p requires true win-rate > p for positive EV (e.g. 0.90 entry needs >90%)."

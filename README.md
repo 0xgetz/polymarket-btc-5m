@@ -52,7 +52,28 @@ Profiles live only in `config/polybtc_profiles.yaml`:
 | `conservative` | Default live path: stricter filters, edge gate, session blocks, edge-scaled size |
 | `aggressive` | Higher frequency / risk, looser edge & session |
 | `high_confidence` | Selective mid-high threshold band, harder impulse, more confirm polls |
+| `micro_10` | **Tiny live test** — ~10 USDT bankroll, **$1/trade**, max 5 trades/day |
 | `observe` | **Research only** — looser gates for `polybtc_live_logger` / dry-run; **not for live money** |
+
+### Micro test with ~10 USDT
+Use profile `micro_10` and set equity to your bankroll so daily loss % is meaningful:
+
+```bash
+# 1) Dry-run first (no orders)
+export POLYBTC_EQUITY=10
+python scripts/test_polybtc_session_exit_sl.py --profile micro_10
+
+# or via ctl:
+scripts/polybtc_ctl.sh start --profile micro_10
+
+# 2) Only after dry-run looks sane — REAL $1 orders (wallet must hold ~10 USDT):
+export POLYBTC_EQUITY=10
+scripts/polybtc_ctl.sh start --profile micro_10 --live
+# equivalent:
+python scripts/test_polybtc_session_exit_sl.py --profile micro_10 --equity 10 --execute
+```
+
+`micro_10` caps: stake **$1**, max notional **$1**, max **5** trades/day, stop after **2** consecutive losses, daily max loss **20% of equity** (≈$2 if equity=10). Hedge disabled. You can still lose the full stack over multiple days.
 
 ## 📊 Realistic Expectations — No Guaranteed Profit
 

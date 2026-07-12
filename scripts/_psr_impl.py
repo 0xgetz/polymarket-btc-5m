@@ -477,7 +477,7 @@ def main() -> None:
     ap.add_argument("--runtime-dir", default=os.environ.get("POLYBTC_RUNTIME_DIR") or default_runtime_dir())
     ap.add_argument(
         "--profile",
-        choices=["conservative", "aggressive", "high_confidence", "observe"],
+        choices=["conservative", "aggressive", "high_confidence", "observe", "micro_10"],
         default="conservative",
     )
     ap.add_argument("--threshold", type=float, default=None)

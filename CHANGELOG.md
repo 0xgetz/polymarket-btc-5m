@@ -4,6 +4,8 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 ### Added
+- **`micro_10` profile**: ~10 USDT bankroll live test ($1 stake, $1 max notional,
+  5 trades/day, 2-loss kill, hedge off). Documented in README + `.env.example`.
 - **`observe` profile**: looser research gates for live_logger / dry-run (not live money).
 - **Live logger CSV export**: writes companion `.csv` + `--export-jsonl` conversion
   for backtest/calibrate pipelines.
