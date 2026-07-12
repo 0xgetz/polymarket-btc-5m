@@ -15,5 +15,6 @@ err
 # runtime artifacts: paper-trade logs and daily summaries
 runtime/
 
-# Expanded session-runner cache (prefer tracked _psr_impl.py; b64 is fallback)
-scripts/_polybtc_session_runner_impl.py
+# Local tooling / push helpers (never commit)
+.push_payload.json
+*.local.json
