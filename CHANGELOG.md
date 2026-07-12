@@ -3,7 +3,23 @@
 All notable changes to this project are documented here.
 
 ## [Unreleased]
-### Improved (signal quality)
+### Added
+- **Accuracy calibrator** (`scripts/polybtc_calibrate.py`): grid-search
+  threshold / skew / impulse min-max against a CSV via the same preflight
+  backtest path; ranks by expectancy with a soft min-trades floor.
+- Expanded sample backtest CSV (+6 rows for weak skew / blow-off / aligned wins).
+- `tests/test_calibrate.py` and BACKTESTING.md calibration section.
+
+### Improved (signal quality / accuracy)
+- **Signed BTC impulse** on the live path: Binance 5m candle returns
+  `close - open` (not abs). Fixes `require_move_aligned` for DOWN entries.
+- **`btc_move_usd_max`**: skip blow-off candles above a per-profile USD cap.
+- **`min_skew_gap`**: market skew confirmation — chosen ask must beat the
+  opposite side by at least this gap (implements checklist item “skew confirmation”).
+- **`confirm_polls`**: anti-spike gate — same-side preflight GO must hold across
+  N consecutive polls before entry (`ConfirmTracker` in preflight + live runner).
+- Profile defaults: conservative (max $200, skew 0.18, confirm 2), aggressive
+  (max $250, skew 0.12, confirm 1), high_confidence (max $160, skew 0.30, confirm 3).
 - **Direction alignment** (`require_move_aligned`): only enter UP when BTC move is
   positive and DOWN when negative — blocks counter-impulse thrashing.
 - **`high_confidence` profile**: threshold 0.82–0.92 band, harder impulse ($95),
