@@ -69,6 +69,7 @@ to verify your real win-rate and block negative-expectation trades.
 - `BACKTESTING.md` — CSV historical backtest guide
 - `config/` — profiles and risk parameters (`polybtc_profiles.yaml` is the single source of truth)
 - `scripts/` — runners/wrappers/hot commands + validation / live-safety helpers
+  (`_psr_impl.py` is the plain monolithic live-session implementation)
 - `examples/` — practical command examples + sample backtest CSV
 - `assets/` — logo and demo GIFs
 - `tests/` — pytest unit tests (config, preflight, edge, guardrails, analytics, dry-run, summary, live safety, backtest)
@@ -97,6 +98,8 @@ Dry-run first (default — no orders):
 .venv/bin/python scripts/test_polybtc_session_exit_sl.py --profile conservative
 # or:
 scripts/polybtc_ctl.sh start --profile conservative
+# selective / higher quality filters (fewer trades — not a guaranteed 90% WR):
+scripts/polybtc_ctl.sh start --profile high_confidence
 ```
 
 Live only after validation (explicit flag required):
