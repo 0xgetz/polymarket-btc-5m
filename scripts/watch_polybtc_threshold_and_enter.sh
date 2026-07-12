@@ -11,6 +11,16 @@ LOG="$RUNTIME_DIR/polybtc_threshold_watch.log"
 STATE="$RUNTIME_DIR/polybtc_threshold_watch.state"
 LOCK="$RUNTIME_DIR/polybtc_threshold_watch.lock"
 
+if [[ -n "${POLYBTC_PY:-}" && -x "${POLYBTC_PY}" ]]; then
+  PYTHON="$POLYBTC_PY"
+elif [[ -x "$REPO/.venv/bin/python" ]]; then
+  PYTHON="$REPO/.venv/bin/python"
+elif [[ -x "$SKILL_ROOT/.venv/bin/python" ]]; then
+  PYTHON="$SKILL_ROOT/.venv/bin/python"
+else
+  PYTHON="$(command -v python3 || command -v python)"
+fi
+
 THRESHOLD="${1:-0.75}"
 STAKE="${2:-4}"
 SLEEP_SEC="${3:-20}"
@@ -54,7 +64,7 @@ while true; do
 
   # Single attempt per cycle with short entry timeout to avoid nested long loops.
   set +e
-  out=$(cd "$REPO" && .venv/bin/python "$PY" \
+  out=$("$PYTHON" "$PY" \
     --profile conservative \
     --threshold "$THRESHOLD" \
     --stake-usd "$STAKE" \
