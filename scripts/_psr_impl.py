@@ -259,20 +259,16 @@ def clob_best_bid(token_id: str, clob_base: str = "https://clob.polymarket.com")
     return best_bid
 
 
-def btc_move_usd_current_5m() -> Optional[float]:
-    """Signed USD move of BTCUSDT in the current 5m Binance candle (close - open).
-
-    Sign is required for ``require_move_aligned`` (UP needs positive move,
-    DOWN needs negative). Preflight uses ``abs(move)`` for size filters.
-    """
+def _btc_signed_move(interval: str, bucket_sec: int) -> Optional[float]:
+    """Signed USD move of BTCUSDT for the current candle of ``interval``."""
     try:
         now = int(time.time())
-        start_ms = (now - (now % 300)) * 1000
+        start_ms = (now - (now % bucket_sec)) * 1000
         r = requests.get(
             "https://api.binance.com/api/v3/klines",
             params={
                 "symbol": "BTCUSDT",
-                "interval": "5m",
+                "interval": interval,
                 "startTime": start_ms,
                 "limit": 1,
             },
@@ -287,6 +283,20 @@ def btc_move_usd_current_5m() -> Optional[float]:
         return c - o
     except Exception:
         return None
+
+
+def btc_move_usd_current_5m() -> Optional[float]:
+    """Signed USD move of BTCUSDT in the current 5m Binance candle (close - open).
+
+    Sign is required for ``require_move_aligned`` (UP needs positive move,
+    DOWN needs negative). Preflight uses ``abs(move)`` for size filters.
+    """
+    return _btc_signed_move("5m", 300)
+
+
+def btc_move_usd_current_1m() -> Optional[float]:
+    """Signed USD move of BTCUSDT in the current 1m Binance candle (close - open)."""
+    return _btc_signed_move("1m", 60)
 
 
 def auth_clob_client(clob_base: str = "https://clob.polymarket.com"):
@@ -616,6 +626,24 @@ def main() -> None:
                     time.sleep(args.poll_sec)
                     continue
 
+            btc_move_1m: Optional[float] = None
+            if work_profile.get("require_1m_aligned"):
+                if args.skip_btc_move:
+                    # Dry override path: align 1m with 5m sign so preflight can proceed.
+                    btc_move_1m = 1.0 if float(btc_move) >= 0 else -1.0
+                else:
+                    btc_move_1m = btc_move_usd_current_1m()
+                    if btc_move_1m is None:
+                        report["attempts"].append(
+                            {
+                                "ts": ts_utc(),
+                                "slug": slug,
+                                "status": "skip_btc_move_1m_unavailable",
+                            }
+                        )
+                        time.sleep(args.poll_sec)
+                        continue
+
             # Pick top-ask notional for the stronger candidate side for liquidity check.
             up_ask = snap["up_ask"]
             dn_ask = snap["dn_ask"]
@@ -645,6 +673,7 @@ def main() -> None:
                 top_ask_notional_usd=float(top_notional),
                 quote_age_sec=float(snap.get("quote_age_sec") or 0.0),
                 hour_utc=int(now_utc().hour),
+                btc_move_1m_usd=float(btc_move_1m) if btc_move_1m is not None else None,
             )
             decision = evaluate(work_profile, market)
             confirmed, confirm_streak = confirm_tracker.update(decision)
@@ -659,12 +688,14 @@ def main() -> None:
                     "clob_down_ask": dn_ask,
                     "seconds_left": sec_left,
                     "btc_move_usd": btc_move,
+                    "btc_move_1m_usd": btc_move_1m,
                     "spread": spread,
                     "top_ask_notional": top_notional,
                     "hour_utc": market.hour_utc,
                     "skew_gap": decision.skew_gap,
                     "estimated_win_prob": decision.estimated_win_prob,
                     "edge": decision.edge,
+                    "stake_scale": decision.stake_scale,
                     "preflight_ok": decision.ok,
                     "preflight_side": decision.side,
                     "preflight_reasons": decision.reasons,

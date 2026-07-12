@@ -4,6 +4,14 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 ### Added
+- **Edge-scaled sizing** (`stake_mode: edge_scaled` + `scale_stake_usd`): stake
+  scales between `min_scale` and `max_scale` of base as heuristic edge rises,
+  still hard-capped by `max_notional_usd`.
+- **1m entry confirm** (`require_1m_aligned`): last Binance 1m candle must agree
+  with the chosen side (anti-wick). Live fetches `btc_move_1m`; preflight /
+  backtest accept `btc_move_1m_usd`.
+- **Exit attribution report** (`scripts/polybtc_exit_report.py`): break down
+  settled PnL by `close_reason` family (stop / early_cut / hold / time_exit).
 - **Managed exit policy** (`exit_policy` + `decide_exit` in `polybtc_live_safety`):
   hold-to-resolve when bid is extreme near close (ride later than
   `exit_before_sec`), early-cut if underwater or BTC reverses against the

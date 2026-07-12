@@ -94,6 +94,14 @@ def _parse_hour_utc(row: Dict[str, str]) -> Optional[int]:
 
 
 def _parse_snapshot(row: Dict[str, str]) -> MarketSnapshot:
+    m1 = _parse_float(row, "btc_move_1m_usd")
+    # If 1m not provided, fall back to 5m sign so require_1m_aligned can still run in samples.
+    if m1 is None:
+        try:
+            m5 = float(row["btc_move_usd"])
+            m1 = 1.0 if m5 >= 0 else -1.0
+        except (KeyError, TypeError, ValueError):
+            m1 = None
     return MarketSnapshot(
         seconds_left=float(row["seconds_left"]),
         btc_move_usd=float(row["btc_move_usd"]),
@@ -103,6 +111,7 @@ def _parse_snapshot(row: Dict[str, str]) -> MarketSnapshot:
         top_ask_notional_usd=float(row.get("top_ask_notional_usd", 0) or 0),
         quote_age_sec=float(row.get("quote_age_sec", 0) or 0),
         hour_utc=_parse_hour_utc(row),
+        btc_move_1m_usd=m1,
     )
 
 

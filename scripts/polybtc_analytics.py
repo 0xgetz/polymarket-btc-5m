@@ -137,11 +137,14 @@ def load_runs_from_logs(runtime_dir: str, limit: int = 500) -> List[Dict[str, An
         pnl = obj.get("realized_cashflow_pnl_usdc")
         if not isinstance(pnl, (int, float)):
             continue
+        closed = obj.get("closed") or {}
+        opened = obj.get("opened") or {}
         trades.append(
             {
                 "pnl": float(pnl),
-                "side": (obj.get("opened") or {}).get("side"),
+                "side": opened.get("side"),
                 "result": obj.get("result"),
+                "close_reason": closed.get("close_reason"),
                 "ts": os.path.getmtime(f),
                 "file": os.path.basename(f),
             }

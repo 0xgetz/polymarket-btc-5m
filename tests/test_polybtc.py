@@ -15,6 +15,7 @@ from polybtc_preflight import (  # noqa: E402
     evaluate,
     compute_hedge,
     estimate_win_prob,
+    scale_stake_usd,
     session_hour_allowed,
 )
 
@@ -79,9 +80,17 @@ def test_validator_catches_missing_section():
 # preflight engine
 # --------------------------------------------------------------------------- #
 def _good_market(profile, **overrides):
+    move = overrides.get("btc_move_usd", profile["btc_move_usd_min"] + 10)
+    # Default 1m aligned with 5m so require_1m_aligned profiles still GO in unit tests.
+    if "btc_move_1m_usd" not in overrides:
+        overrides = dict(overrides)
+        overrides["btc_move_1m_usd"] = 5.0 if float(move) >= 0 else -5.0
+    if "hour_utc" not in overrides:
+        overrides = dict(overrides)
+        overrides.setdefault("hour_utc", 14)
     base = dict(
         seconds_left=profile["entry_window_seconds_left_target"],
-        btc_move_usd=profile["btc_move_usd_min"] + 10,
+        btc_move_usd=move,
         up_ask=max(0.71, profile["threshold_price"]),
         dn_ask=0.29,
         spread=profile["skip_if_spread_gt"] / 2,
@@ -96,7 +105,9 @@ def test_go_decision_picks_up(conservative):
     d = evaluate(conservative, _good_market(conservative))
     assert d.ok is True
     assert d.side == "UP"
-    assert d.stake_usd == min(conservative["stake_usd"], conservative["max_notional_usd"])
+    # Edge-scaled profiles may size above base stake (still ≤ max_notional).
+    assert d.stake_usd is not None
+    assert 0 < d.stake_usd <= conservative["max_notional_usd"]
     assert all(d.checks.values())
 
 
@@ -110,7 +121,9 @@ def test_stake_capped_by_max_notional(cfg):
 def test_picks_stronger_side_when_both_qualify(conservative):
     # DOWN is stronger; move must be negative when require_move_aligned is on.
     # Skew gap must clear profile min_skew_gap (chosen - opposite).
-    m = _good_market(conservative, up_ask=0.55, dn_ask=0.80, btc_move_usd=-90)
+    m = _good_market(
+        conservative, up_ask=0.55, dn_ask=0.80, btc_move_usd=-90, btc_move_1m_usd=-8
+    )
     d = evaluate(conservative, m)
     assert d.ok and d.side == "DOWN" and d.entry_price == 0.80
 
@@ -285,6 +298,61 @@ def test_session_filter_allowlist(conservative):
     assert ok is True
     assert bad is False
     assert "allow_hours_utc" in reason
+
+
+def test_1m_align_blocks_wick(conservative):
+    prof = dict(conservative, require_1m_aligned=True)
+    # 5m up but 1m already reversing down → block.
+    m = _good_market(prof, btc_move_usd=90, btc_move_1m_usd=-12, hour_utc=14)
+    d = evaluate(prof, m)
+    assert d.ok is False
+    assert d.checks.get("move_1m_aligned") is False
+
+
+def test_1m_align_passes_when_same_sign(conservative):
+    prof = dict(conservative, require_1m_aligned=True)
+    m = _good_market(prof, btc_move_usd=90, btc_move_1m_usd=8, hour_utc=14)
+    d = evaluate(prof, m)
+    assert d.ok is True
+    assert d.checks.get("move_1m_aligned") is True
+
+
+def test_edge_scaled_stake_increases_with_edge():
+    low, s_lo = scale_stake_usd(
+        base_stake=5,
+        max_notional=10,
+        edge=0.02,
+        min_edge=0.02,
+        sizing={
+            "stake_mode": "edge_scaled",
+            "edge_scale": {
+                "enabled": True,
+                "min_scale": 0.5,
+                "max_scale": 1.25,
+                "edge_for_min_scale": 0.02,
+                "edge_for_full_scale": 0.06,
+            },
+        },
+    )
+    high, s_hi = scale_stake_usd(
+        base_stake=5,
+        max_notional=10,
+        edge=0.06,
+        min_edge=0.02,
+        sizing={
+            "stake_mode": "edge_scaled",
+            "edge_scale": {
+                "enabled": True,
+                "min_scale": 0.5,
+                "max_scale": 1.25,
+                "edge_for_min_scale": 0.02,
+                "edge_for_full_scale": 0.06,
+            },
+        },
+    )
+    assert s_lo == 0.5 and abs(low - 2.5) < 1e-9
+    assert s_hi == 1.25 and abs(high - 6.25) < 1e-9
+    assert high > low
 
 
 def test_nogo_on_thin_liquidity(conservative):

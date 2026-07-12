@@ -222,6 +222,26 @@ After entry the runner no longer only does “stop or exit_before_sec”:
 
 Logic is pure and unit-tested in `polybtc_live_safety.decide_exit`.
 
+### Edge-scaled sizing + 1m entry confirm
+- `sizing.stake_mode: edge_scaled` grows stake with heuristic edge (see
+  `edge_scale` min/max in the profile YAML).
+- `signal.require_1m_aligned: true` requires the current 1m BTC candle to agree
+  with UP/DOWN (blocks wicks that already reversed on the 1m).
+
+```bash
+python scripts/polybtc_preflight.py --profile conservative \
+  --seconds-left 118 --btc-move-usd 110 --btc-move-1m-usd 12 \
+  --up-ask 0.74 --dn-ask 0.28 --spread 0.02 --top-ask-notional 50 \
+  --hour-utc 14
+```
+
+### Exit attribution report
+After live/paper runs, measure which exit path helps:
+
+```bash
+python scripts/polybtc_exit_report.py --runtime-dir ./runtime --limit 200
+```
+
 ### Trade analytics / log backtest
 Measure the **real** win-rate, expectancy, profit factor, max drawdown, and
 streaks from your runtime logs — the only honest way to know whether the edge is

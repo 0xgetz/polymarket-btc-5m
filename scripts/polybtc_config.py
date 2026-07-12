@@ -162,7 +162,7 @@ def validate_config(cfg: Dict[str, Any]) -> List[str]:
                 and sig["confirm_polls"] >= 1,
                 f"profile '{pname}': signal.confirm_polls must be an integer >= 1",
             )
-        for flag in ("require_move_aligned", "require_entry_window"):
+        for flag in ("require_move_aligned", "require_entry_window", "require_1m_aligned"):
             if flag in sig:
                 require(
                     isinstance(sig.get(flag), bool),
@@ -178,6 +178,31 @@ def validate_config(cfg: Dict[str, Any]) -> List[str]:
                 maxn >= stake,
                 f"profile '{pname}': sizing.max_notional_usd must be >= stake_usd",
             )
+        mode = sizing.get("stake_mode")
+        if mode is not None:
+            require(
+                mode in ("fixed_or_cap", "edge_scaled"),
+                f"profile '{pname}': sizing.stake_mode must be fixed_or_cap or edge_scaled",
+            )
+        es = sizing.get("edge_scale") or {}
+        if es:
+            for k in ("min_scale", "max_scale"):
+                if k in es:
+                    require(
+                        _num(es.get(k)) and es[k] > 0,
+                        f"profile '{pname}': sizing.edge_scale.{k} must be > 0",
+                    )
+            if _num(es.get("min_scale")) and _num(es.get("max_scale")):
+                require(
+                    es["max_scale"] >= es["min_scale"],
+                    f"profile '{pname}': edge_scale.max_scale must be >= min_scale",
+                )
+            for k in ("edge_for_min_scale", "edge_for_full_scale"):
+                if k in es:
+                    require(
+                        _num(es.get(k)) and 0 <= es[k] < 1,
+                        f"profile '{pname}': sizing.edge_scale.{k} must be in [0,1)",
+                    )
         dml = sizing.get("daily_max_loss_pct")
         require(_num(dml) and 0 < dml <= 100, f"profile '{pname}': sizing.daily_max_loss_pct must be in (0, 100]")
         mtd = sizing.get("max_trades_per_day")
@@ -320,11 +345,14 @@ def get_profile(cfg: Dict[str, Any], name: str) -> Dict[str, Any]:
         "threshold_price": float(sig["threshold_price"]),
         "require_move_aligned": bool(sig.get("require_move_aligned", False)),
         "require_entry_window": bool(sig.get("require_entry_window", False)),
+        "require_1m_aligned": bool(sig.get("require_1m_aligned", False)),
         "max_entry_price": float(max_entry) if max_entry is not None else None,
         "btc_move_usd_max": float(btc_max) if btc_max is not None else None,
         "min_skew_gap": float(min_skew) if min_skew is not None else None,
         "confirm_polls": max(1, confirm_polls),
         "stake_usd": float(prof["sizing"]["stake_usd"]),
+        "stake_mode": str(prof["sizing"].get("stake_mode") or "fixed_or_cap"),
+        "edge_scale": dict(prof["sizing"].get("edge_scale") or {}),
         "max_notional_usd": float(prof["sizing"]["max_notional_usd"]),
         "daily_max_loss_pct": float(prof["sizing"]["daily_max_loss_pct"]),
         "max_trades_per_day": int(prof["sizing"]["max_trades_per_day"]),

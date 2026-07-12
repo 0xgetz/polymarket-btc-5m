@@ -49,11 +49,19 @@ profiles:
       min_skew_gap: 0.18
       # Anti-spike: same-side GO must hold across consecutive polls.
       confirm_polls: 2
+      # 1m candle must agree with side (anti-wick entry).
+      require_1m_aligned: true
     sizing:
-      stake_mode: "fixed_or_cap"
+      stake_mode: "edge_scaled"
       stake_usd: 5
       risk_per_trade_pct_equity: 8
       max_notional_usd: 8
+      edge_scale:
+        enabled: true
+        min_scale: 0.50
+        max_scale: 1.25
+        edge_for_min_scale: 0.02
+        edge_for_full_scale: 0.06
       daily_max_loss_pct: 10
       max_trades_per_day: 12
     risk_controls:
@@ -99,11 +107,18 @@ profiles:
       btc_move_usd_max: 250
       min_skew_gap: 0.12
       confirm_polls: 1
+      require_1m_aligned: true
     sizing:
-      stake_mode: "fixed_or_cap"
+      stake_mode: "edge_scaled"
       stake_usd: 5
       risk_per_trade_pct_equity: 15
       max_notional_usd: 15
+      edge_scale:
+        enabled: true
+        min_scale: 0.60
+        max_scale: 1.50
+        edge_for_min_scale: 0.01
+        edge_for_full_scale: 0.05
       daily_max_loss_pct: 15
       max_trades_per_day: 20
     risk_controls:
@@ -153,11 +168,18 @@ profiles:
       btc_move_usd_max: 160
       min_skew_gap: 0.30
       confirm_polls: 3
+      require_1m_aligned: true
     sizing:
-      stake_mode: "fixed_or_cap"
+      stake_mode: "edge_scaled"
       stake_usd: 4
       risk_per_trade_pct_equity: 5
       max_notional_usd: 6
+      edge_scale:
+        enabled: true
+        min_scale: 0.50
+        max_scale: 1.20
+        edge_for_min_scale: 0.03
+        edge_for_full_scale: 0.07
       daily_max_loss_pct: 8
       max_trades_per_day: 6
     risk_controls:
@@ -216,5 +238,7 @@ notes:
   - "require_ev_gate: block when heuristic edge (est_win_prob - entry) < min_edge."
   - "session_filter: optional UTC hour allow/block list to skip weak sessions."
   - "exit_policy: hold-to-resolve near 0.95, early-cut if underwater/BTC reverse near expiry."
+  - "require_1m_aligned: last 1m BTC candle must agree with side (anti-wick entry)."
+  - "stake_mode edge_scaled: stake grows with heuristic edge between min_scale and max_scale."
   - "high_confidence aims for quality over frequency — not a guaranteed 90% win rate."
   - "Buying at price p requires true win-rate > p for positive EV (e.g. 0.90 entry needs >90%)."

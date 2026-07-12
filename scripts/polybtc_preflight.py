@@ -41,6 +41,8 @@ class MarketSnapshot:
     top_ask_notional_usd: float  # notional available at top ask ($)
     quote_age_sec: float = 0.0   # age of the latest quote (staleness)
     hour_utc: Optional[int] = None  # 0-23 for session filter; None = unknown
+    # Signed 1m BTC move (close - open) for anti-wick entry confirmation.
+    btc_move_1m_usd: Optional[float] = None
 
 
 @dataclass
@@ -48,7 +50,7 @@ class Decision:
     ok: bool                                   # True only if all hard checks pass
     side: Optional[str]                        # 'UP' | 'DOWN' | None
     entry_price: Optional[float]               # ask used for entry
-    stake_usd: Optional[float]                 # recommended stake (capped)
+    stake_usd: Optional[float]                 # recommended stake (capped / edge-scaled)
     max_notional_usd: Optional[float]          # profile notional cap
     stop_loss_price: Optional[float]           # computed stop price (if enabled)
     hedge: Optional[Dict[str, Any]]            # hedge plan or None
@@ -58,6 +60,7 @@ class Decision:
     skew_gap: Optional[float] = None           # chosen_ask - opposite_ask when available
     estimated_win_prob: Optional[float] = None  # heuristic P(win)
     edge: Optional[float] = None               # estimated_win_prob - entry_price
+    stake_scale: Optional[float] = None        # edge-scaled multiplier applied to base stake
 
 
 @dataclass
@@ -137,6 +140,50 @@ def estimate_win_prob(
 
     est = p + move_bonus + skew_bonus + window_bonus + time_bonus - rich_haircut
     return _clip(est, 0.05, 0.98)
+
+
+def scale_stake_usd(
+    *,
+    base_stake: float,
+    max_notional: float,
+    edge: Optional[float],
+    min_edge: float,
+    sizing: Optional[Dict[str, Any]] = None,
+) -> Tuple[float, float]:
+    """Edge-scaled stake between min_scale and max_scale of base, capped by max_notional.
+
+    Returns ``(stake_usd, scale)``. When edge scaling is off or edge is unknown,
+    returns the fixed ``min(base, max_notional)`` with scale 1.0.
+    """
+    base = float(base_stake)
+    cap = float(max_notional)
+    fixed = min(base, cap)
+    sizing = sizing or {}
+    mode = str(sizing.get("stake_mode") or "fixed_or_cap")
+    es = sizing.get("edge_scale") or {}
+    enabled = mode == "edge_scaled" or bool(es.get("enabled", False))
+    if not enabled or edge is None:
+        return fixed, 1.0
+
+    min_scale = float(es.get("min_scale", 0.5))
+    max_scale = float(es.get("max_scale", 1.25))
+    if max_scale < min_scale:
+        min_scale, max_scale = max_scale, min_scale
+    e0 = float(es.get("edge_for_min_scale", min_edge))
+    e1 = float(es.get("edge_for_full_scale", max(e0 + 0.04, min_edge + 0.04)))
+    if e1 <= e0:
+        e1 = e0 + 0.04
+
+    e = float(edge)
+    if e <= e0:
+        t = 0.0
+    elif e >= e1:
+        t = 1.0
+    else:
+        t = (e - e0) / (e1 - e0)
+    scale = min_scale + t * (max_scale - min_scale)
+    stake = min(cap, max(0.0, base * scale))
+    return round(stake, 4), round(scale, 4)
 
 
 def session_hour_allowed(
@@ -339,6 +386,26 @@ def evaluate(profile: Dict[str, Any], market: MarketSnapshot) -> Decision:
                 f"(enable require_move_aligned to block)"
             )
 
+    # 8b) 1m entry confirm: last 1m candle must agree with side (anti-wick).
+    require_1m = bool(profile.get("require_1m_aligned", False))
+    if require_1m:
+        ok_1m = False
+        m1 = market.btc_move_1m_usd
+        if side is None:
+            ok_1m = False
+        elif m1 is None:
+            ok_1m = False
+            reasons.append("btc_move_1m unavailable (require_1m_aligned)")
+        elif side == "UP" and float(m1) > 0:
+            ok_1m = True
+        elif side == "DOWN" and float(m1) < 0:
+            ok_1m = True
+        else:
+            reasons.append(
+                f"btc_move_1m ${float(m1):+.1f} not aligned with side {side}"
+            )
+        checks["move_1m_aligned"] = ok_1m if side is not None else False
+
     # 9) Skew confirmation: chosen side must dominate the opposite ask by
     #    at least min_skew_gap (crowd + book already lean hard with momentum).
     skew_gap: Optional[float] = None
@@ -402,10 +469,21 @@ def evaluate(profile: Dict[str, Any], market: MarketSnapshot) -> Decision:
     max_notional: Optional[float] = None
     stop_price: Optional[float] = None
     hedge_plan: Optional[Dict[str, Any]] = None
+    stake_scale: Optional[float] = None
 
     if ok:
         max_notional = profile["max_notional_usd"]
-        stake_usd = min(profile["stake_usd"], max_notional)
+        sizing = {
+            "stake_mode": profile.get("stake_mode", "fixed_or_cap"),
+            "edge_scale": profile.get("edge_scale") or {},
+        }
+        stake_usd, stake_scale = scale_stake_usd(
+            base_stake=float(profile["stake_usd"]),
+            max_notional=float(max_notional),
+            edge=trade_edge,
+            min_edge=min_edge,
+            sizing=sizing,
+        )
 
         sl = profile.get("stop_loss", {})
         if sl.get("enabled") and entry_price is not None:
@@ -419,9 +497,10 @@ def evaluate(profile: Dict[str, Any], market: MarketSnapshot) -> Decision:
 
     if ok:
         edge_s = "" if trade_edge is None else f" edge {trade_edge:+.3f}"
+        scale_s = "" if stake_scale is None or stake_scale == 1.0 else f" scale×{stake_scale:g}"
         reasons.insert(
             0,
-            f"GO: enter {side} @ {entry_price:.2f} stake ${stake_usd:g}{edge_s}",
+            f"GO: enter {side} @ {entry_price:.2f} stake ${stake_usd:g}{edge_s}{scale_s}",
         )
 
     return Decision(
@@ -438,6 +517,7 @@ def evaluate(profile: Dict[str, Any], market: MarketSnapshot) -> Decision:
         skew_gap=_round(skew_gap),
         estimated_win_prob=_round(estimated_win_prob),
         edge=_round(trade_edge),
+        stake_scale=_round(stake_scale),
     )
 
 
@@ -462,6 +542,12 @@ def main() -> int:
         default=None,
         help="UTC hour 0-23 for session_filter (optional)",
     )
+    ap.add_argument(
+        "--btc-move-1m-usd",
+        type=float,
+        default=None,
+        help="Signed 1m BTC move (close-open) for require_1m_aligned",
+    )
     args = ap.parse_args()
 
     cfg = load_config(args.config)
@@ -480,6 +566,7 @@ def main() -> int:
         top_ask_notional_usd=args.top_ask_notional,
         quote_age_sec=args.quote_age_sec,
         hour_utc=args.hour_utc,
+        btc_move_1m_usd=args.btc_move_1m_usd,
     )
     decision = evaluate(profile, market)
     print(json.dumps(asdict(decision), indent=2))
