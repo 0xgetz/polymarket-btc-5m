@@ -30,6 +30,17 @@ jobs:
       - name: Python compile check
         run: python -m compileall -q scripts tests
 
+      - name: Session runner load check
+        run: |
+          python -c "
+          import sys
+          from pathlib import Path
+          sys.path.insert(0, str(Path('scripts').resolve()))
+          from polybtc_session_runner import main
+          assert callable(main)
+          print('session_runner_ok')
+          "
+
       - name: Validate strategy config
         run: python scripts/polybtc_config.py --validate
 
