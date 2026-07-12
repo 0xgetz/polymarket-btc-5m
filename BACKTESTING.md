@@ -71,6 +71,39 @@ python scripts/polybtc_backtest.py \
 
 If entry is `0.71`, a `--min-edge 0.05` gate requires `estimated_win_prob >= 0.76`.
 
+## Calibrate accuracy filters
+
+Use the calibrator to grid-search `threshold`, `min_skew_gap`, `btc_move_usd_min`,
+and `btc_move_usd_max` against your CSV. It ranks combos by expectancy / PnL
+(with a soft `min_trades` floor):
+
+```bash
+python scripts/polybtc_calibrate.py \
+  --csv examples/polybtc_backtest_sample_data.csv \
+  --profile conservative \
+  --top 10 \
+  --min-trades 2
+```
+
+Narrow the grid when you have a hypothesis:
+
+```bash
+python scripts/polybtc_calibrate.py \
+  --csv your_history.csv \
+  --profile high_confidence \
+  --thresholds 0.80,0.82,0.85 \
+  --skew-gaps 0.18,0.25,0.30 \
+  --move-mins 85,95 \
+  --move-maxs 160,200,none \
+  --top 15
+```
+
+Apply the winning `params` into `config/polybtc_profiles.yaml` (or CLI overrides),
+then re-run dry-run / paper for a few sessions before live size-up.
+
+**Note:** `confirm_polls` only helps when the CSV has multiple sequential polls
+per market; single-row-per-market datasets should leave it at `1`.
+
 ## Output fields
 
 The JSON report includes:
