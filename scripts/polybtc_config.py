@@ -140,6 +140,28 @@ def validate_config(cfg: Dict[str, Any]) -> List[str]:
                 _num(sig.get("btc_move_usd_min")) and sig["btc_move_usd_min"] > 0,
                 f"profile '{pname}': signal.btc_move_usd_min must be > 0",
             )
+        if "btc_move_usd_max" in sig:
+            require(
+                _num(sig.get("btc_move_usd_max")) and sig["btc_move_usd_max"] > 0,
+                f"profile '{pname}': signal.btc_move_usd_max must be > 0",
+            )
+            if _num(sig.get("btc_move_usd_min")) and _num(sig.get("btc_move_usd_max")):
+                require(
+                    sig["btc_move_usd_max"] >= sig["btc_move_usd_min"],
+                    f"profile '{pname}': signal.btc_move_usd_max must be >= btc_move_usd_min",
+                )
+        if "min_skew_gap" in sig:
+            require(
+                _num(sig.get("min_skew_gap")) and 0 <= sig["min_skew_gap"] < 1,
+                f"profile '{pname}': signal.min_skew_gap must be in [0, 1)",
+            )
+        if "confirm_polls" in sig:
+            require(
+                isinstance(sig.get("confirm_polls"), int)
+                and not isinstance(sig.get("confirm_polls"), bool)
+                and sig["confirm_polls"] >= 1,
+                f"profile '{pname}': signal.confirm_polls must be an integer >= 1",
+            )
         for flag in ("require_move_aligned", "require_entry_window"):
             if flag in sig:
                 require(
@@ -213,7 +235,11 @@ def get_profile(cfg: Dict[str, Any], name: str) -> Dict[str, Any]:
         "btc_move_usd_max_reference",
         sr.get("btc_move_usd_max_reference", sr["btc_move_usd_min"]),
     )
+    # Hard max is optional; when unset, no upper impulse cap is applied.
+    btc_max = sig.get("btc_move_usd_max")
     max_entry = sig.get("max_entry_price")
+    min_skew = sig.get("min_skew_gap")
+    confirm_polls = int(sig.get("confirm_polls", 1))
     return {
         "name": name,
         # signal / sizing
@@ -221,6 +247,9 @@ def get_profile(cfg: Dict[str, Any], name: str) -> Dict[str, Any]:
         "require_move_aligned": bool(sig.get("require_move_aligned", False)),
         "require_entry_window": bool(sig.get("require_entry_window", False)),
         "max_entry_price": float(max_entry) if max_entry is not None else None,
+        "btc_move_usd_max": float(btc_max) if btc_max is not None else None,
+        "min_skew_gap": float(min_skew) if min_skew is not None else None,
+        "confirm_polls": max(1, confirm_polls),
         "stake_usd": float(prof["sizing"]["stake_usd"]),
         "max_notional_usd": float(prof["sizing"]["max_notional_usd"]),
         "daily_max_loss_pct": float(prof["sizing"]["daily_max_loss_pct"]),

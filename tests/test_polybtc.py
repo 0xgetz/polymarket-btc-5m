@@ -103,7 +103,8 @@ def test_stake_capped_by_max_notional(cfg):
 
 def test_picks_stronger_side_when_both_qualify(conservative):
     # DOWN is stronger; move must be negative when require_move_aligned is on.
-    m = _good_market(conservative, up_ask=0.72, dn_ask=0.80, btc_move_usd=-90)
+    # Skew gap must clear profile min_skew_gap (chosen - opposite).
+    m = _good_market(conservative, up_ask=0.55, dn_ask=0.80, btc_move_usd=-90)
     d = evaluate(conservative, m)
     assert d.ok and d.side == "DOWN" and d.entry_price == 0.80
 
@@ -144,6 +145,61 @@ def test_high_confidence_go_in_window(cfg):
     assert d.side == "UP"
     assert d.checks.get("move_aligned") is True
     assert d.checks.get("entry_window") is True
+    assert d.checks.get("skew_confirm") is True
+    assert d.checks.get("impulse_max") is True
+
+
+def test_blocks_blowoff_impulse(conservative):
+    max_move = conservative.get("btc_move_usd_max")
+    if max_move is None:
+        pytest.skip("btc_move_usd_max not set")
+    m = _good_market(conservative, btc_move_usd=float(max_move) + 50)
+    d = evaluate(conservative, m)
+    assert d.ok is False
+    assert d.checks.get("impulse_max") is False
+
+
+def test_blocks_weak_skew(conservative):
+    # UP clears threshold but gap vs DOWN is thin (crowd not committed).
+    m = _good_market(conservative, up_ask=0.72, dn_ask=0.68, btc_move_usd=90)
+    d = evaluate(conservative, m)
+    assert d.ok is False
+    assert d.checks.get("skew_confirm") is False
+
+
+def test_confirm_tracker_requires_streak():
+    from polybtc_preflight import ConfirmTracker, Decision
+
+    tr = ConfirmTracker(needed=3)
+    go_up = Decision(
+        ok=True, side="UP", entry_price=0.8, stake_usd=5, max_notional_usd=8,
+        stop_loss_price=None, hedge=None,
+    )
+    nogo = Decision(
+        ok=False, side=None, entry_price=None, stake_usd=None,
+        max_notional_usd=None, stop_loss_price=None, hedge=None,
+    )
+    assert tr.update(go_up) == (False, 1)
+    assert tr.update(go_up) == (False, 2)
+    assert tr.update(go_up) == (True, 3)
+    # Reset on NO-GO
+    assert tr.update(nogo) == (False, 0)
+    # Side flip restarts streak
+    go_dn = Decision(
+        ok=True, side="DOWN", entry_price=0.8, stake_usd=5, max_notional_usd=8,
+        stop_loss_price=None, hedge=None,
+    )
+    assert tr.update(go_up) == (False, 1)
+    assert tr.update(go_dn) == (False, 1)
+    assert tr.update(go_dn) == (False, 2)
+    assert tr.update(go_dn) == (True, 3)
+
+
+def test_profile_exposes_accuracy_filters(cfg):
+    prof = cfgmod.get_profile(cfg, "conservative")
+    assert prof.get("min_skew_gap") is not None
+    assert prof.get("confirm_polls", 1) >= 1
+    assert prof.get("btc_move_usd_max") is not None
 
 
 def test_nogo_on_thin_liquidity(conservative):

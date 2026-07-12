@@ -24,13 +24,13 @@ import json
 import sys
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 
 @dataclass
 class MarketSnapshot:
     seconds_left: float          # seconds remaining in the active 5m slot
-    btc_move_usd: float          # observed BTC move in the active interval (abs $)
+    btc_move_usd: float          # signed BTC move in the active interval (close - open, $)
     up_ask: Optional[float]      # CLOB best ask for UP token (0..1), None if unavailable
     dn_ask: Optional[float]      # CLOB best ask for DOWN token (0..1), None if unavailable
     spread: float                # top-of-book spread of the picked side
@@ -50,6 +50,38 @@ class Decision:
     checks: Dict[str, bool] = field(default_factory=dict)   # per-check pass/fail
     reasons: List[str] = field(default_factory=list)        # human-readable notes
     in_target_window: bool = False             # soft: within ideal ~target window
+    skew_gap: Optional[float] = None           # chosen_ask - opposite_ask when available
+
+
+@dataclass
+class ConfirmTracker:
+    """Require N consecutive GO decisions on the *same* side before entry.
+
+    Filters one-tick spikes / flash skew that would otherwise pass a single poll.
+    ``needed=1`` (default) means enter on the first GO — backward compatible.
+    """
+
+    needed: int = 1
+    side: Optional[str] = None
+    count: int = 0
+
+    def update(self, decision: "Decision") -> Tuple[bool, int]:
+        """Feed one preflight result. Returns ``(confirmed, streak)``."""
+        need = max(1, int(self.needed))
+        if not decision.ok or decision.side is None:
+            self.side = None
+            self.count = 0
+            return False, 0
+        if decision.side == self.side:
+            self.count += 1
+        else:
+            self.side = decision.side
+            self.count = 1
+        return self.count >= need, self.count
+
+    def reset(self) -> None:
+        self.side = None
+        self.count = 0
 
 
 def _round(x: Optional[float], n: int = 4) -> Optional[float]:
@@ -107,12 +139,21 @@ def evaluate(profile: Dict[str, Any], market: MarketSnapshot) -> Decision:
     tol = profile["entry_window_seconds_left_tolerance"]
     in_window = (tgt - tol) <= market.seconds_left <= (tgt + tol)
 
-    # 2) Impulse confirmation: BTC move meets minimum.
+    # 2) Impulse confirmation: BTC move meets minimum (signed move, abs for size).
     move_min = profile["btc_move_usd_min"]
-    ok_move = abs(market.btc_move_usd) >= move_min
+    abs_move = abs(market.btc_move_usd)
+    ok_move = abs_move >= move_min
     checks["impulse_move"] = ok_move
     if not ok_move:
-        reasons.append(f"btc_move ${abs(market.btc_move_usd):.0f} < min ${move_min:.0f}")
+        reasons.append(f"btc_move ${abs_move:.0f} < min ${move_min:.0f}")
+
+    # 2b) Optional max impulse: skip blow-off moves that reverse more often.
+    move_max = profile.get("btc_move_usd_max")
+    if move_max is not None:
+        ok_max = abs_move <= float(move_max)
+        checks["impulse_max"] = ok_max
+        if not ok_max:
+            reasons.append(f"btc_move ${abs_move:.0f} > max ${float(move_max):.0f}")
 
     # 3) Quote freshness.
     ok_fresh = market.quote_age_sec <= profile["skip_if_quote_stale_sec_gt"]
@@ -179,8 +220,9 @@ def evaluate(profile: Dict[str, Any], market: MarketSnapshot) -> Decision:
         da = "n/a" if market.dn_ask is None else f"{market.dn_ask:.2f}"
         reasons.append(f"no side >= threshold {thr:.2f} (UP {ua}, DOWN {da})")
 
-    # 8) Direction alignment: BTC impulse sign must match chosen side.
+    # 8) Direction alignment: BTC impulse *sign* must match chosen side.
     #    Prevents buying UP after a dump just because ask is still elevated.
+    #    Requires a *signed* btc_move_usd (close - open), not abs().
     require_aligned = bool(profile.get("require_move_aligned", False))
     if require_aligned:
         aligned = False
@@ -202,6 +244,33 @@ def evaluate(profile: Dict[str, Any], market: MarketSnapshot) -> Decision:
                 f"note: btc_move ${market.btc_move_usd:+.0f} opposite to {side} "
                 f"(enable require_move_aligned to block)"
             )
+
+    # 9) Skew confirmation: chosen side must dominate the opposite ask by
+    #    at least min_skew_gap (crowd + book already lean hard with momentum).
+    skew_gap: Optional[float] = None
+    min_skew = profile.get("min_skew_gap")
+    if min_skew is not None and float(min_skew) > 0:
+        min_skew_f = float(min_skew)
+        if side == "UP" and market.up_ask is not None and market.dn_ask is not None:
+            skew_gap = float(market.up_ask) - float(market.dn_ask)
+            ok_skew = skew_gap >= min_skew_f
+        elif side == "DOWN" and market.dn_ask is not None and market.up_ask is not None:
+            skew_gap = float(market.dn_ask) - float(market.up_ask)
+            ok_skew = skew_gap >= min_skew_f
+        else:
+            ok_skew = False
+            skew_gap = None
+        checks["skew_confirm"] = ok_skew if side is not None else False
+        if side is not None and not ok_skew:
+            gap_s = "n/a" if skew_gap is None else f"{skew_gap:.3f}"
+            reasons.append(
+                f"skew_gap {gap_s} < min_skew_gap {min_skew_f:.3f} for {side}"
+            )
+    elif side is not None and market.up_ask is not None and market.dn_ask is not None:
+        if side == "UP":
+            skew_gap = float(market.up_ask) - float(market.dn_ask)
+        else:
+            skew_gap = float(market.dn_ask) - float(market.up_ask)
 
     # --- aggregate ---
     ok = all(checks.values())
@@ -239,6 +308,7 @@ def evaluate(profile: Dict[str, Any], market: MarketSnapshot) -> Decision:
         checks=checks,
         reasons=reasons,
         in_target_window=in_window,
+        skew_gap=_round(skew_gap),
     )
 
 

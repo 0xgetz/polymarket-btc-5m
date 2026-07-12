@@ -72,7 +72,7 @@ to verify your real win-rate and block negative-expectation trades.
   (`_psr_impl.py` is the plain monolithic live-session implementation)
 - `examples/` — practical command examples + sample backtest CSV
 - `assets/` — logo and demo GIFs
-- `tests/` — pytest unit tests (config, preflight, edge, guardrails, analytics, dry-run, summary, live safety, backtest)
+- `tests/` — pytest unit tests (config, preflight, edge, guardrails, analytics, dry-run, summary, live safety, backtest, calibrate)
 - `.github/workflows/` — CI (lint, compile, config validation, tests)
 
 ## Deploy / Run
@@ -184,6 +184,16 @@ Example output (exit code `0` = GO, `1` = NO-GO):
               "spread": true, "liquidity": true, "threshold_side": true } }
 ```
 
+### Accuracy calibrator (CSV grid search)
+Sweep threshold / skew / impulse min-max on historical snapshots and rank by
+expectancy (same preflight path as live). Details in `BACKTESTING.md`.
+
+```bash
+python scripts/polybtc_calibrate.py \
+  --csv examples/polybtc_backtest_sample_data.csv \
+  --profile conservative --top 10 --min-trades 2
+```
+
 ### Trade analytics / log backtest
 Measure the **real** win-rate, expectancy, profit factor, max drawdown, and
 streaks from your runtime logs — the only honest way to know whether the edge is
@@ -267,16 +277,21 @@ Use this quick pre-flight checklist before any real order:
 2. **Time-to-close window**
    - Prefer entries around ~120 seconds left (with reasonable tolerance).
 3. **Impulse confirmation**
-   - Confirm the observed BTC move is meaningful (strategy reference: ~$70-$100).
+   - Confirm the observed BTC move is meaningful (strategy reference: ~$70-$100)
+     and within `btc_move_usd_max` if set (skip blow-off candles).
+   - Use a **signed** move (`close - open`) so UP/DOWN alignment is correct.
 4. **Skew confirmation**
-   - Verify market skew supports the intended direction (do not fade strong momentum by default).
-5. **Liquidity/spread checks**
+   - Verify market skew supports the intended direction via `min_skew_gap`
+     (chosen ask − opposite ask). Do not fade strong momentum by default.
+5. **Multi-poll confirm**
+   - Prefer `confirm_polls` ≥ 2 so a single flash quote cannot open a trade.
+6. **Liquidity/spread checks**
    - Ensure spread and top-of-book notional pass your minimum thresholds.
-6. **Sizing guardrails**
+7. **Sizing guardrails**
    - Validate stake, max notional, and daily loss limits before execution.
-7. **Stop / exit controls**
+8. **Stop / exit controls**
    - Confirm stop-loss and `exit_before_sec` are configured.
-8. **Execution mode**
+9. **Execution mode**
    - Start in dry-run when changing parameters; switch to `--execute` only after validation.
 
 ## Risk Controls Template

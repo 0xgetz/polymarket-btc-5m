@@ -35,7 +35,7 @@ from polybtc_live_safety import (  # noqa: E402
     stop_loss_price,
     today_utc,
 )
-from polybtc_preflight import MarketSnapshot, evaluate  # noqa: E402
+from polybtc_preflight import ConfirmTracker, MarketSnapshot, evaluate  # noqa: E402
 
 try:
     from py_clob_client.client import ClobClient
@@ -258,7 +258,11 @@ def clob_best_bid(token_id: str, clob_base: str = "https://clob.polymarket.com")
 
 
 def btc_move_usd_current_5m() -> Optional[float]:
-    """Absolute USD move of BTCUSDT in the current 5m Binance candle."""
+    """Signed USD move of BTCUSDT in the current 5m Binance candle (close - open).
+
+    Sign is required for ``require_move_aligned`` (UP needs positive move,
+    DOWN needs negative). Preflight uses ``abs(move)`` for size filters.
+    """
     try:
         now = int(time.time())
         start_ms = (now - (now % 300)) * 1000
@@ -278,7 +282,7 @@ def btc_move_usd_current_5m() -> Optional[float]:
             return None
         o = float(arr[0][1])
         c = float(arr[0][4])
-        return abs(c - o)
+        return c - o
     except Exception:
         return None
 
@@ -494,7 +498,7 @@ def main() -> None:
         "--btc-move-usd",
         type=float,
         default=None,
-        help="Override observed BTC move (USD abs); otherwise fetch Binance 5m candle",
+        help="Override observed BTC move (USD signed close-open); otherwise fetch Binance 5m candle",
     )
     ap.add_argument("--execute", action="store_true", help="Place real orders (default: dry-run)")
     args = ap.parse_args()
@@ -549,6 +553,10 @@ def main() -> None:
     opened = None
     consecutive_api_errors = 0
     max_api_errors = int(work_profile.get("skip_if_dns_or_api_errors_consecutive", 3))
+    confirm_tracker = ConfirmTracker(needed=int(work_profile.get("confirm_polls", 1)))
+    report["params"]["confirm_polls"] = confirm_tracker.needed
+    report["params"]["min_skew_gap"] = work_profile.get("min_skew_gap")
+    report["params"]["btc_move_usd_max"] = work_profile.get("btc_move_usd_max")
 
     while time.time() < deadline:
         try:
@@ -633,6 +641,7 @@ def main() -> None:
                 quote_age_sec=float(snap.get("quote_age_sec") or 0.0),
             )
             decision = evaluate(work_profile, market)
+            confirmed, confirm_streak = confirm_tracker.update(decision)
             report["attempts"].append(
                 {
                     "ts": ts_utc(),
@@ -646,14 +655,32 @@ def main() -> None:
                     "btc_move_usd": btc_move,
                     "spread": spread,
                     "top_ask_notional": top_notional,
+                    "skew_gap": decision.skew_gap,
                     "preflight_ok": decision.ok,
                     "preflight_side": decision.side,
                     "preflight_reasons": decision.reasons,
                     "checks": decision.checks,
+                    "confirm_streak": confirm_streak,
+                    "confirm_needed": confirm_tracker.needed,
+                    "confirm_ready": confirmed,
                 }
             )
 
             if not decision.ok or decision.side is None or decision.entry_price is None:
+                time.sleep(args.poll_sec)
+                continue
+
+            if not confirmed:
+                report["attempts"].append(
+                    {
+                        "ts": ts_utc(),
+                        "slug": slug,
+                        "status": "await_confirm",
+                        "side": decision.side,
+                        "confirm_streak": confirm_streak,
+                        "confirm_needed": confirm_tracker.needed,
+                    }
+                )
                 time.sleep(args.poll_sec)
                 continue
 
