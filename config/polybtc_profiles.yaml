@@ -62,6 +62,12 @@ profiles:
         max_scale: 1.25
         edge_for_min_scale: 0.02
         edge_for_full_scale: 0.06
+      # Soft size-down after consecutive losses (before hard kill switch).
+      loss_streak_scale:
+        enabled: true
+        after_losses: 1
+        scale_per_loss: 0.5
+        min_scale: 0.25
       daily_max_loss_pct: 10
       max_trades_per_day: 12
     risk_controls:
@@ -119,6 +125,11 @@ profiles:
         max_scale: 1.50
         edge_for_min_scale: 0.01
         edge_for_full_scale: 0.05
+      loss_streak_scale:
+        enabled: true
+        after_losses: 1
+        scale_per_loss: 0.6
+        min_scale: 0.30
       daily_max_loss_pct: 15
       max_trades_per_day: 20
     risk_controls:
@@ -180,6 +191,11 @@ profiles:
         max_scale: 1.20
         edge_for_min_scale: 0.03
         edge_for_full_scale: 0.07
+      loss_streak_scale:
+        enabled: true
+        after_losses: 1
+        scale_per_loss: 0.5
+        min_scale: 0.25
       daily_max_loss_pct: 8
       max_trades_per_day: 6
     risk_controls:
@@ -214,6 +230,57 @@ profiles:
         min_adverse_from_entry: 0.025
         on_btc_reverse: true
 
+  # Observe-only research profile: looser gates to collect more GO candidates in logs.
+  # NOT for live money — use with polybtc_live_logger / dry-run only.
+  observe:
+    description: "Research logger profile: looser impulse/skew/edge so more candidates appear in logs."
+    signal:
+      trigger_source: "clob_best_ask"
+      direction_rule: "follow_stronger_side_over_threshold"
+      threshold_price: 0.60
+      max_entry_price: 0.95
+      require_move_aligned: true
+      require_entry_window: false
+      btc_move_usd_min: 40
+      btc_move_usd_max: 300
+      min_skew_gap: 0.08
+      confirm_polls: 1
+      require_1m_aligned: false
+    sizing:
+      stake_mode: "fixed_or_cap"
+      stake_usd: 1
+      risk_per_trade_pct_equity: 2
+      max_notional_usd: 2
+      daily_max_loss_pct: 5
+      max_trades_per_day: 50
+      loss_streak_scale:
+        enabled: false
+    risk_controls:
+      max_consecutive_losses: 10
+      min_edge: 0.0
+      require_ev_gate: false
+    session_filter:
+      enabled: false
+      require_hour: false
+      block_hours_utc: []
+    hedge:
+      enabled: false
+    stop_loss:
+      enabled: true
+      stop_loss_pct_from_entry: 0.30
+    exit_policy:
+      enabled: true
+      hold_to_resolve:
+        enabled: true
+        min_bid: 0.95
+        max_seconds_left: 45
+        exit_before_sec: 3
+      early_cut:
+        enabled: true
+        max_seconds_left: 40
+        min_adverse_from_entry: 0.03
+        on_btc_reverse: false
+
 runner_mapping:
   script: "skills/polybtc-momentum/scripts/test_polybtc_session_exit_sl.py"
   direct_flags_now_supported:
@@ -240,5 +307,7 @@ notes:
   - "exit_policy: hold-to-resolve near 0.95, early-cut if underwater/BTC reverse near expiry."
   - "require_1m_aligned: last 1m BTC candle must agree with side (anti-wick entry)."
   - "stake_mode edge_scaled: stake grows with heuristic edge between min_scale and max_scale."
+  - "loss_streak_scale: soft size-down after consecutive losses before kill switch."
+  - "observe profile: looser research gates for live_logger / dry-run only — not live money."
   - "high_confidence aims for quality over frequency — not a guaranteed 90% win rate."
   - "Buying at price p requires true win-rate > p for positive EV (e.g. 0.90 entry needs >90%)."

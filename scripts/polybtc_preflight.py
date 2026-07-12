@@ -61,6 +61,7 @@ class Decision:
     estimated_win_prob: Optional[float] = None  # heuristic P(win)
     edge: Optional[float] = None               # estimated_win_prob - entry_price
     stake_scale: Optional[float] = None        # edge-scaled multiplier applied to base stake
+    streak_scale: Optional[float] = None       # loss-streak soft size multiplier
 
 
 @dataclass
@@ -149,11 +150,11 @@ def scale_stake_usd(
     edge: Optional[float],
     min_edge: float,
     sizing: Optional[Dict[str, Any]] = None,
-) -> Tuple[float, float]:
-    """Edge-scaled stake between min_scale and max_scale of base, capped by max_notional.
+    consecutive_losses: int = 0,
+) -> Tuple[float, float, float]:
+    """Edge-scaled + loss-streak soft sizing, capped by max_notional.
 
-    Returns ``(stake_usd, scale)``. When edge scaling is off or edge is unknown,
-    returns the fixed ``min(base, max_notional)`` with scale 1.0.
+    Returns ``(stake_usd, edge_scale, streak_scale)``.
     """
     base = float(base_stake)
     cap = float(max_notional)
@@ -161,29 +162,60 @@ def scale_stake_usd(
     sizing = sizing or {}
     mode = str(sizing.get("stake_mode") or "fixed_or_cap")
     es = sizing.get("edge_scale") or {}
-    enabled = mode == "edge_scaled" or bool(es.get("enabled", False))
-    if not enabled or edge is None:
-        return fixed, 1.0
+    edge_enabled = mode == "edge_scaled" or bool(es.get("enabled", False))
 
-    min_scale = float(es.get("min_scale", 0.5))
-    max_scale = float(es.get("max_scale", 1.25))
-    if max_scale < min_scale:
-        min_scale, max_scale = max_scale, min_scale
-    e0 = float(es.get("edge_for_min_scale", min_edge))
-    e1 = float(es.get("edge_for_full_scale", max(e0 + 0.04, min_edge + 0.04)))
-    if e1 <= e0:
-        e1 = e0 + 0.04
+    edge_scale = 1.0
+    if edge_enabled and edge is not None:
+        min_scale = float(es.get("min_scale", 0.5))
+        max_scale = float(es.get("max_scale", 1.25))
+        if max_scale < min_scale:
+            min_scale, max_scale = max_scale, min_scale
+        e0 = float(es.get("edge_for_min_scale", min_edge))
+        e1 = float(es.get("edge_for_full_scale", max(e0 + 0.04, min_edge + 0.04)))
+        if e1 <= e0:
+            e1 = e0 + 0.04
+        e = float(edge)
+        if e <= e0:
+            t = 0.0
+        elif e >= e1:
+            t = 1.0
+        else:
+            t = (e - e0) / (e1 - e0)
+        edge_scale = min_scale + t * (max_scale - min_scale)
 
-    e = float(edge)
-    if e <= e0:
-        t = 0.0
-    elif e >= e1:
-        t = 1.0
+    streak_scale = loss_streak_scale(
+        consecutive_losses=int(consecutive_losses or 0),
+        policy=sizing.get("loss_streak_scale") or {},
+    )
+    combined = float(edge_scale) * float(streak_scale)
+    if not edge_enabled and streak_scale == 1.0:
+        stake = fixed
     else:
-        t = (e - e0) / (e1 - e0)
-    scale = min_scale + t * (max_scale - min_scale)
-    stake = min(cap, max(0.0, base * scale))
-    return round(stake, 4), round(scale, 4)
+        stake = min(cap, max(0.0, base * combined))
+    return round(stake, 4), round(edge_scale, 4), round(streak_scale, 4)
+
+
+def loss_streak_scale(*, consecutive_losses: int, policy: Optional[Dict[str, Any]] = None) -> float:
+    """Soft size multiplier after consecutive losses (before hard kill switch).
+
+    After ``after_losses`` losses in a row, multiply by ``scale_per_loss`` for each
+    step beyond the threshold, floored at ``min_scale``.
+    Example: after_losses=1, scale_per_loss=0.5 → 1 loss → 0.5, 2 losses → 0.25.
+    """
+    policy = policy or {}
+    if not policy.get("enabled", False):
+        return 1.0
+    n = max(0, int(consecutive_losses or 0))
+    after = max(1, int(policy.get("after_losses", 1)))
+    if n < after:
+        return 1.0
+    per = float(policy.get("scale_per_loss", 0.5))
+    floor = float(policy.get("min_scale", 0.25))
+    if per <= 0:
+        return floor
+    steps = n - after + 1
+    scale = per ** steps
+    return max(floor, min(1.0, scale))
 
 
 def session_hour_allowed(
@@ -255,8 +287,17 @@ def compute_hedge(
     }
 
 
-def evaluate(profile: Dict[str, Any], market: MarketSnapshot) -> Decision:
-    """Run all hard guards + side selection and return a Decision."""
+def evaluate(
+    profile: Dict[str, Any],
+    market: MarketSnapshot,
+    *,
+    consecutive_losses: int = 0,
+) -> Decision:
+    """Run all hard guards + side selection and return a Decision.
+
+    ``consecutive_losses`` soft-scales stake when ``loss_streak_scale`` is enabled
+    (does not replace the hard kill switch in guardrails).
+    """
     checks: Dict[str, bool] = {}
     reasons: List[str] = []
 
@@ -470,20 +511,27 @@ def evaluate(profile: Dict[str, Any], market: MarketSnapshot) -> Decision:
     stop_price: Optional[float] = None
     hedge_plan: Optional[Dict[str, Any]] = None
     stake_scale: Optional[float] = None
+    streak_scale: Optional[float] = None
 
     if ok:
         max_notional = profile["max_notional_usd"]
         sizing = {
             "stake_mode": profile.get("stake_mode", "fixed_or_cap"),
             "edge_scale": profile.get("edge_scale") or {},
+            "loss_streak_scale": profile.get("loss_streak_scale") or {},
         }
-        stake_usd, stake_scale = scale_stake_usd(
+        stake_usd, stake_scale, streak_scale = scale_stake_usd(
             base_stake=float(profile["stake_usd"]),
             max_notional=float(max_notional),
             edge=trade_edge,
             min_edge=min_edge,
             sizing=sizing,
+            consecutive_losses=int(consecutive_losses or 0),
         )
+        if streak_scale is not None and streak_scale < 1.0:
+            reasons.append(
+                f"loss_streak_scale ×{streak_scale:g} after {int(consecutive_losses)} losses"
+            )
 
         sl = profile.get("stop_loss", {})
         if sl.get("enabled") and entry_price is not None:
@@ -497,10 +545,11 @@ def evaluate(profile: Dict[str, Any], market: MarketSnapshot) -> Decision:
 
     if ok:
         edge_s = "" if trade_edge is None else f" edge {trade_edge:+.3f}"
-        scale_s = "" if stake_scale is None or stake_scale == 1.0 else f" scale×{stake_scale:g}"
+        scale_s = "" if stake_scale is None or stake_scale == 1.0 else f" edge×{stake_scale:g}"
+        streak_s = "" if streak_scale is None or streak_scale == 1.0 else f" streak×{streak_scale:g}"
         reasons.insert(
             0,
-            f"GO: enter {side} @ {entry_price:.2f} stake ${stake_usd:g}{edge_s}{scale_s}",
+            f"GO: enter {side} @ {entry_price:.2f} stake ${stake_usd:g}{edge_s}{scale_s}{streak_s}",
         )
 
     return Decision(
@@ -518,6 +567,7 @@ def evaluate(profile: Dict[str, Any], market: MarketSnapshot) -> Decision:
         estimated_win_prob=_round(estimated_win_prob),
         edge=_round(trade_edge),
         stake_scale=_round(stake_scale),
+        streak_scale=_round(streak_scale),
     )
 
 

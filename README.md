@@ -242,6 +242,23 @@ After live/paper runs, measure which exit path helps:
 python scripts/polybtc_exit_report.py --runtime-dir ./runtime --limit 200
 ```
 
+### Live observe logger + CSV export (no orders)
+```bash
+# looser research profile (default for logger)
+python scripts/polybtc_live_logger.py --profile observe --minutes 60 --poll-sec 5
+# export existing JSONL → CSV for calibrate/backtest
+python scripts/polybtc_live_logger.py --export-jsonl runtime/polybtc_live_obs_....jsonl
+```
+
+### Fill / slippage report
+```bash
+python scripts/polybtc_fill_report.py --runtime-dir ./runtime --limit 200
+```
+
+### Soft size after loss streak
+Profiles can set `sizing.loss_streak_scale` so stake shrinks after consecutive
+losses (e.g. ×0.5 then ×0.25) **before** the hard `max_consecutive_losses` kill.
+
 ### Trade analytics / log backtest
 Measure the **real** win-rate, expectancy, profit factor, max drawdown, and
 streaks from your runtime logs — the only honest way to know whether the edge is

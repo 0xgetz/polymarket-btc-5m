@@ -4,6 +4,13 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 ### Added
+- **`observe` profile**: looser research gates for live_logger / dry-run (not live money).
+- **Live logger CSV export**: writes companion `.csv` + `--export-jsonl` conversion
+  for backtest/calibrate pipelines.
+- **Loss-streak soft sizing** (`loss_streak_scale`): shrink stake after consecutive
+  losses before the hard kill switch; wired via `evaluate(..., consecutive_losses=)`.
+- **Fill/slippage report** (`scripts/polybtc_fill_report.py`): signal ask vs fill
+  price in bps from runtime logs.
 - **Edge-scaled sizing** (`stake_mode: edge_scaled` + `scale_stake_usd`): stake
   scales between `min_scale` and `max_scale` of base as heuristic edge rises,
   still hard-capped by `max_notional_usd`.

@@ -477,7 +477,7 @@ def main() -> None:
     ap.add_argument("--runtime-dir", default=os.environ.get("POLYBTC_RUNTIME_DIR") or default_runtime_dir())
     ap.add_argument(
         "--profile",
-        choices=["conservative", "aggressive", "high_confidence"],
+        choices=["conservative", "aggressive", "high_confidence", "observe"],
         default="conservative",
     )
     ap.add_argument("--threshold", type=float, default=None)
@@ -555,11 +555,13 @@ def main() -> None:
     gstate = build_guard_state_from_pnls(pnls, today_utc())
     gcheck = check_guards(work_profile, gstate, account_equity=args.equity)
     report["guardrails"] = gcheck
+    report["params"]["consecutive_losses"] = int(getattr(gstate, "consecutive_losses", 0) or 0)
     if not gcheck.get("allowed", False):
         report["finished_at"] = ts_utc()
         report["result"] = "blocked_by_guardrails"
         print(json.dumps(report, ensure_ascii=False, indent=2))
         return
+    consecutive_losses = int(getattr(gstate, "consecutive_losses", 0) or 0)
 
     deadline = time.time() + args.entry_timeout_min * 60
     opened = None
@@ -675,7 +677,11 @@ def main() -> None:
                 hour_utc=int(now_utc().hour),
                 btc_move_1m_usd=float(btc_move_1m) if btc_move_1m is not None else None,
             )
-            decision = evaluate(work_profile, market)
+            decision = evaluate(
+                work_profile,
+                market,
+                consecutive_losses=consecutive_losses,
+            )
             confirmed, confirm_streak = confirm_tracker.update(decision)
             report["attempts"].append(
                 {
@@ -696,6 +702,7 @@ def main() -> None:
                     "estimated_win_prob": decision.estimated_win_prob,
                     "edge": decision.edge,
                     "stake_scale": decision.stake_scale,
+                    "streak_scale": decision.streak_scale,
                     "preflight_ok": decision.ok,
                     "preflight_side": decision.side,
                     "preflight_reasons": decision.reasons,
@@ -761,8 +768,10 @@ def main() -> None:
                     "side": side,
                     "token_id": token_id,
                     "entry_price": entry_price,
+                    "signal_price": decision.entry_price,
                     "shares": shares,
                     "cost_usdc": cost,
+                    "stake_usd": stake,
                     "open_order_id": post.get("orderID"),
                     "open_tx": (post.get("transactionsHashes") or [None])[0],
                 }
@@ -771,6 +780,9 @@ def main() -> None:
                     "side": side,
                     "entry_price": decision.entry_price,
                     "stake_usd": stake,
+                    "stake_scale": decision.stake_scale,
+                    "streak_scale": decision.streak_scale,
+                    "edge": decision.edge,
                     "reasons": decision.reasons,
                     "checks": decision.checks,
                 }

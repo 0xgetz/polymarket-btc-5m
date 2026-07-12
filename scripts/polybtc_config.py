@@ -203,6 +203,30 @@ def validate_config(cfg: Dict[str, Any]) -> List[str]:
                         _num(es.get(k)) and 0 <= es[k] < 1,
                         f"profile '{pname}': sizing.edge_scale.{k} must be in [0,1)",
                     )
+        lss = sizing.get("loss_streak_scale") or {}
+        if lss:
+            if "enabled" in lss:
+                require(
+                    isinstance(lss.get("enabled"), bool),
+                    f"profile '{pname}': sizing.loss_streak_scale.enabled must be a boolean",
+                )
+            if "after_losses" in lss:
+                require(
+                    isinstance(lss.get("after_losses"), int)
+                    and not isinstance(lss.get("after_losses"), bool)
+                    and lss["after_losses"] >= 1,
+                    f"profile '{pname}': loss_streak_scale.after_losses must be int >= 1",
+                )
+            if "scale_per_loss" in lss:
+                require(
+                    _num(lss.get("scale_per_loss")) and 0 < lss["scale_per_loss"] <= 1,
+                    f"profile '{pname}': loss_streak_scale.scale_per_loss must be in (0,1]",
+                )
+            if "min_scale" in lss:
+                require(
+                    _num(lss.get("min_scale")) and 0 < lss["min_scale"] <= 1,
+                    f"profile '{pname}': loss_streak_scale.min_scale must be in (0,1]",
+                )
         dml = sizing.get("daily_max_loss_pct")
         require(_num(dml) and 0 < dml <= 100, f"profile '{pname}': sizing.daily_max_loss_pct must be in (0, 100]")
         mtd = sizing.get("max_trades_per_day")
@@ -353,6 +377,7 @@ def get_profile(cfg: Dict[str, Any], name: str) -> Dict[str, Any]:
         "stake_usd": float(prof["sizing"]["stake_usd"]),
         "stake_mode": str(prof["sizing"].get("stake_mode") or "fixed_or_cap"),
         "edge_scale": dict(prof["sizing"].get("edge_scale") or {}),
+        "loss_streak_scale": dict(prof["sizing"].get("loss_streak_scale") or {}),
         "max_notional_usd": float(prof["sizing"]["max_notional_usd"]),
         "daily_max_loss_pct": float(prof["sizing"]["daily_max_loss_pct"]),
         "max_trades_per_day": int(prof["sizing"]["max_trades_per_day"]),

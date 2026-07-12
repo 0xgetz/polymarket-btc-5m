@@ -38,7 +38,7 @@ def test_shipped_config_is_valid(cfg):
 
 
 def test_expected_profiles_present(cfg):
-    assert {"conservative", "aggressive", "high_confidence"} <= set(cfg["profiles"])
+    assert {"conservative", "aggressive", "high_confidence", "observe"} <= set(cfg["profiles"])
 
 
 def test_get_profile_flattens_fields(conservative):
@@ -318,7 +318,7 @@ def test_1m_align_passes_when_same_sign(conservative):
 
 
 def test_edge_scaled_stake_increases_with_edge():
-    low, s_lo = scale_stake_usd(
+    low, s_lo, st_lo = scale_stake_usd(
         base_stake=5,
         max_notional=10,
         edge=0.02,
@@ -334,7 +334,7 @@ def test_edge_scaled_stake_increases_with_edge():
             },
         },
     )
-    high, s_hi = scale_stake_usd(
+    high, s_hi, st_hi = scale_stake_usd(
         base_stake=5,
         max_notional=10,
         edge=0.06,
@@ -353,6 +353,33 @@ def test_edge_scaled_stake_increases_with_edge():
     assert s_lo == 0.5 and abs(low - 2.5) < 1e-9
     assert s_hi == 1.25 and abs(high - 6.25) < 1e-9
     assert high > low
+    assert st_lo == 1.0 and st_hi == 1.0
+
+
+def test_loss_streak_soft_size():
+    from polybtc_preflight import loss_streak_scale
+
+    pol = {"enabled": True, "after_losses": 1, "scale_per_loss": 0.5, "min_scale": 0.25}
+    assert loss_streak_scale(consecutive_losses=0, policy=pol) == 1.0
+    assert loss_streak_scale(consecutive_losses=1, policy=pol) == 0.5
+    assert loss_streak_scale(consecutive_losses=2, policy=pol) == 0.25
+    stake, _, streak = scale_stake_usd(
+        base_stake=8,
+        max_notional=8,
+        edge=None,
+        min_edge=0.02,
+        sizing={"stake_mode": "fixed_or_cap", "loss_streak_scale": pol},
+        consecutive_losses=1,
+    )
+    assert streak == 0.5
+    assert abs(stake - 4.0) < 1e-9
+
+
+def test_observe_profile_loads(cfg):
+    prof = cfgmod.get_profile(cfg, "observe")
+    assert prof["btc_move_usd_min"] <= 40
+    assert prof["require_ev_gate"] is False
+    assert prof["threshold_price"] <= 0.60
 
 
 def test_nogo_on_thin_liquidity(conservative):

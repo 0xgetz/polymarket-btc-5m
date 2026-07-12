@@ -14,6 +14,7 @@ CLI:
 from __future__ import annotations
 
 import argparse
+import csv
 import datetime as dt
 import json
 import os
@@ -251,9 +252,85 @@ def snapshot_once(profile: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+_CSV_FIELDS = [
+    "market_id",
+    "timestamp",
+    "seconds_left",
+    "btc_move_usd",
+    "btc_move_1m_usd",
+    "up_ask",
+    "dn_ask",
+    "spread",
+    "top_ask_notional_usd",
+    "quote_age_sec",
+    "hour_utc",
+    "preflight_ok",
+    "side",
+    "entry_price",
+    "edge",
+    "estimated_win_prob",
+    "stake_usd",
+]
+
+
+def row_to_csv_dict(row: Dict[str, Any]) -> Dict[str, Any]:
+    """Map an observation row to backtest-friendly CSV columns."""
+    return {
+        "market_id": row.get("slug") or "",
+        "timestamp": row.get("ts") or "",
+        "seconds_left": row.get("seconds_left"),
+        "btc_move_usd": row.get("btc_move_usd"),
+        "btc_move_1m_usd": row.get("btc_move_1m_usd"),
+        "up_ask": row.get("up_ask"),
+        "dn_ask": row.get("dn_ask"),
+        "spread": row.get("spread"),
+        "top_ask_notional_usd": row.get("top_ask_notional"),
+        "quote_age_sec": 0.0,
+        "hour_utc": row.get("hour_utc"),
+        "preflight_ok": row.get("preflight_ok"),
+        "side": row.get("side") or "",
+        "entry_price": row.get("entry_price"),
+        "edge": row.get("edge"),
+        "estimated_win_prob": row.get("estimated_win_prob"),
+        "stake_usd": row.get("stake_usd"),
+    }
+
+
+def export_jsonl_to_csv(jsonl_path: Path, csv_path: Path) -> int:
+    """Write CSV from JSONL observations. Returns row count."""
+    n = 0
+    with open(jsonl_path, "r", encoding="utf-8") as fh, open(
+        csv_path, "w", encoding="utf-8", newline=""
+    ) as out:
+        writer = csv.DictWriter(out, fieldnames=_CSV_FIELDS, extrasaction="ignore")
+        writer.writeheader()
+        for line in fh:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if row.get("status") not in (None, "obs") and row.get("status") != "obs":
+                # Keep only market observations
+                if row.get("status") != "obs":
+                    continue
+            if row.get("status") == "obs" or (
+                row.get("up_ask") is not None and row.get("btc_move_usd") is not None
+            ):
+                writer.writerow(row_to_csv_dict(row))
+                n += 1
+    return n
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="PolyBTC live observation logger (no orders)")
-    ap.add_argument("--profile", default="conservative")
+    ap.add_argument(
+        "--profile",
+        default="observe",
+        help="profile name (default: observe — looser research gates)",
+    )
     ap.add_argument("--config", default=None)
     ap.add_argument("--poll-sec", type=float, default=5.0)
     ap.add_argument("--minutes", type=float, default=10.0, help="how long to log")
@@ -266,12 +343,45 @@ def main() -> int:
         action="store_true",
         help="single snapshot then exit",
     )
+    ap.add_argument(
+        "--export-csv",
+        action="store_true",
+        default=True,
+        help="write companion CSV for backtest/calibrate (default: on)",
+    )
+    ap.add_argument(
+        "--no-export-csv",
+        action="store_true",
+        help="disable CSV export",
+    )
+    ap.add_argument(
+        "--export-jsonl",
+        default=None,
+        help="export an existing JSONL file to CSV and exit (no live poll)",
+    )
     args = ap.parse_args()
+
+    if args.export_jsonl:
+        src = Path(args.export_jsonl)
+        if not src.is_file():
+            print(f"ERROR: not found: {src}", file=sys.stderr)
+            return 2
+        dest = src.with_suffix(".csv")
+        n = export_jsonl_to_csv(src, dest)
+        print(json.dumps({"exported_rows": n, "csv": str(dest)}, indent=2))
+        return 0
 
     cfg = load_config(args.config)
     errs = validate_config(cfg)
     if errs:
         print("INVALID config:", *errs, sep="\n  - ", file=sys.stderr)
+        return 2
+    if args.profile not in cfg.get("profiles", {}):
+        print(
+            f"ERROR: unknown profile '{args.profile}'; "
+            f"available: {sorted(cfg.get('profiles', {}))}",
+            file=sys.stderr,
+        )
         return 2
     profile = get_profile(cfg, args.profile)
 
@@ -279,6 +389,7 @@ def main() -> int:
     runtime.mkdir(parents=True, exist_ok=True)
     stamp = dt.datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     out_path = runtime / f"polybtc_live_obs_{args.profile}_{stamp}.jsonl"
+    csv_path = runtime / f"polybtc_live_obs_{args.profile}_{stamp}.csv"
     latest = runtime / "latest_obs.jsonl"
     # symlink-ish: also write path pointer
     (runtime / "latest_obs.path").write_text(str(out_path) + "\n", encoding="utf-8")
@@ -286,6 +397,7 @@ def main() -> int:
     deadline = time.time() + (0 if args.once else max(0.0, args.minutes) * 60.0)
     n = 0
     n_go = 0
+    do_csv = bool(args.export_csv) and not bool(args.no_export_csv)
     print(
         json.dumps(
             {
@@ -294,6 +406,7 @@ def main() -> int:
                 "poll_sec": args.poll_sec,
                 "minutes": args.minutes,
                 "out": str(out_path),
+                "csv": str(csv_path) if do_csv else None,
                 "mode": "observe_only_no_orders",
             },
             ensure_ascii=False,
@@ -301,29 +414,44 @@ def main() -> int:
         flush=True,
     )
 
-    with open(out_path, "a", encoding="utf-8") as fh:
-        # also mirror to latest_obs.jsonl
-        with open(latest, "a", encoding="utf-8") as latest_fh:
-            while True:
-                row = snapshot_once(profile)
-                line = json.dumps(row, ensure_ascii=False)
-                fh.write(line + "\n")
-                fh.flush()
-                latest_fh.write(line + "\n")
-                latest_fh.flush()
-                n += 1
-                if row.get("preflight_ok"):
-                    n_go += 1
-                print(line, flush=True)
-                if args.once or time.time() >= deadline:
-                    break
-                time.sleep(max(1.0, float(args.poll_sec)))
+    csv_fh = None
+    csv_writer = None
+    if do_csv:
+        csv_fh = open(csv_path, "w", encoding="utf-8", newline="")
+        csv_writer = csv.DictWriter(csv_fh, fieldnames=_CSV_FIELDS, extrasaction="ignore")
+        csv_writer.writeheader()
+        csv_fh.flush()
+
+    try:
+        with open(out_path, "a", encoding="utf-8") as fh:
+            with open(latest, "a", encoding="utf-8") as latest_fh:
+                while True:
+                    row = snapshot_once(profile)
+                    line = json.dumps(row, ensure_ascii=False)
+                    fh.write(line + "\n")
+                    fh.flush()
+                    latest_fh.write(line + "\n")
+                    latest_fh.flush()
+                    if csv_writer is not None and row.get("status") == "obs":
+                        csv_writer.writerow(row_to_csv_dict(row))
+                        csv_fh.flush()
+                    n += 1
+                    if row.get("preflight_ok"):
+                        n_go += 1
+                    print(line, flush=True)
+                    if args.once or time.time() >= deadline:
+                        break
+                    time.sleep(max(1.0, float(args.poll_sec)))
+    finally:
+        if csv_fh is not None:
+            csv_fh.close()
 
     summary = {
         "finished_at": ts_utc(),
         "snapshots": n,
         "preflight_go": n_go,
         "out": str(out_path),
+        "csv": str(csv_path) if do_csv else None,
     }
     print(json.dumps(summary, ensure_ascii=False), flush=True)
     return 0
