@@ -17,8 +17,11 @@ All notable changes to this project are documented here.
 - **Graceful stop**: SIGTERM with wait before SIGKILL; lockfile + open-position warning.
 - **Watcher** defaults to dry-run, uses a lockfile, and stops on guardrail block.
 - Added `scripts/polybtc_live_safety.py` + tests; `requirements-live.txt` for CLOB client.
-- **Readable session-runner source** (`scripts/_psr_impl.py`) preferred over b64
-  bootstrap; examples/SKILL show dry-run-first paths.
+- **Readable session-runner source** (`scripts/_psr_impl.py`) is the only
+  implementation; removed zlib/base64 bootstrap parts and obsolete `_psr_part*`.
+- examples/SKILL show dry-run-first paths.
+- `polybtc_ctl.sh` / watcher resolve Python more robustly (`POLYBTC_PY`, trading
+  venv, skill venv, then `python3`).
 
 ### Added
 - **CSV historical backtester** (`scripts/polybtc_backtest.py`) that replays
