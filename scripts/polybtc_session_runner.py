@@ -33,12 +33,26 @@ def _load_readable():
     return None
 
 
+def _repair_b64_part(text: str, name: str) -> str:
+    """Repair known transport corruptions in bootstrap parts if present."""
+    if name.endswith("b64.1") and len(text) == 3807:
+        # Three single-char corruptions observed on one remote push.
+        chars = list(text)
+        if chars[2903:2905] == ["L", "S"]:
+            chars[2903], chars[2904] = "U", "s"
+        if chars[3092] == "V":
+            chars[3092] = "X"
+        return "".join(chars)
+    return text
+
+
 def _load_b64():
     target = _DIR / "_polybtc_session_runner_impl.py"
     if not target.exists() or target.stat().st_size < 1000:
         chunks = []
         for p in sorted(_DIR.glob("session_runner.b64.*")):
-            chunks.append("".join(p.read_text().split()))
+            text = _repair_b64_part(p.read_text(encoding="utf-8"), p.name)
+            chunks.append("".join(text.split()))
         if not chunks:
             raise FileNotFoundError(
                 "No session runner source found "
