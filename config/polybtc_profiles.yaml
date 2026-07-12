@@ -41,6 +41,8 @@ profiles:
       trigger_source: "clob_best_ask"
       direction_rule: "follow_stronger_side_over_threshold"
       threshold_price: 0.70
+      # Align side with BTC impulse (blocks UP-after-dump / DOWN-after-pump).
+      require_move_aligned: true
     sizing:
       stake_mode: "fixed_or_cap"
       stake_usd: 5
@@ -68,6 +70,7 @@ profiles:
       trigger_source: "clob_best_ask"
       direction_rule: "follow_stronger_side_over_threshold"
       threshold_price: 0.70
+      require_move_aligned: true
     sizing:
       stake_mode: "fixed_or_cap"
       stake_usd: 5
@@ -89,6 +92,40 @@ profiles:
       enabled: true
       stop_loss_pct_from_entry: 0.30
 
+  # Selective mode: fewer trades, higher market-implied confidence band.
+  # NOTE: win-rate ≠ profit. Entry ~0.85 needs true WR > 85% just to break even.
+  # Cap max_entry_price so we do not buy 0.97 for pennies of payout.
+  high_confidence:
+    description: "Selective: stronger impulse, aligned direction, mid-high threshold, avoid ultra-rich prices."
+    signal:
+      trigger_source: "clob_best_ask"
+      direction_rule: "follow_stronger_side_over_threshold"
+      threshold_price: 0.82
+      max_entry_price: 0.92
+      require_move_aligned: true
+      require_entry_window: true
+      btc_move_usd_min: 95
+    sizing:
+      stake_mode: "fixed_or_cap"
+      stake_usd: 4
+      risk_per_trade_pct_equity: 5
+      max_notional_usd: 6
+      daily_max_loss_pct: 8
+      max_trades_per_day: 6
+    risk_controls:
+      max_consecutive_losses: 2
+      min_edge: 0.03
+    hedge:
+      enabled: true
+      trigger_side_price_gte: 0.95
+      trigger_seconds_left_lte: 40
+      hedge_share_of_main_pct: 3
+      hedge_notional_usd_min: 1
+      hedge_notional_usd_max: 2
+    stop_loss:
+      enabled: true
+      stop_loss_pct_from_entry: 0.20
+
 runner_mapping:
   script: "skills/polybtc-momentum/scripts/test_polybtc_session_exit_sl.py"
   direct_flags_now_supported:
@@ -104,5 +141,8 @@ runner_mapping:
   example_aggressive_now: ".venv/bin/python scripts/test_polybtc_session_exit_sl.py --threshold 0.70 --stake-usd 6 --stop-loss-pct 0.30 --exit-before-sec 20 --min-entry-seconds-left 60 --entry-timeout-min 60 --poll-sec 5 --execute"
 
 notes:
-  - "Current 5m runner uses threshold/side-strength logic; impulse filter integration can be extended at strategy layer."
+  - "Current 5m runner uses threshold/side-strength logic with optional move alignment."
   - "Entry behavior: continuous CLOB ask monitoring; if UP/DOWN >= threshold, enter on stronger side."
+  - "require_move_aligned: only enter UP when btc_move>0 and DOWN when btc_move<0."
+  - "high_confidence aims for quality over frequency — not a guaranteed 90% win rate."
+  - "Buying at price p requires true win-rate > p for positive EV (e.g. 0.90 entry needs >90%)."
