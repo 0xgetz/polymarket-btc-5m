@@ -35,15 +35,23 @@ def _load_readable():
 
 def _repair_b64_part(text: str, name: str) -> str:
     """Repair known transport corruptions in bootstrap parts if present."""
+    chars = list(text)
+    changed = False
     if name.endswith("b64.1") and len(text) == 3807:
-        # Three single-char corruptions observed on one remote push.
-        chars = list(text)
         if chars[2903:2905] == ["L", "S"]:
             chars[2903], chars[2904] = "U", "s"
+            changed = True
         if chars[3092] == "V":
             chars[3092] = "X"
-        return "".join(chars)
-    return text
+            changed = True
+    if name.endswith("b64.2") and len(text) == 3625:
+        if chars[397] == "3":
+            chars[397] = "7"
+            changed = True
+        if chars[572] == "B":
+            chars[572] = "J"
+            changed = True
+    return "".join(chars) if changed else text
 
 
 def _load_b64():
