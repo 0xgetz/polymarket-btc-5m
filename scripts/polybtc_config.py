@@ -203,6 +203,44 @@ def validate_config(cfg: Dict[str, Any]) -> List[str]:
                 f"profile '{pname}': stop_loss.stop_loss_pct_from_entry must be in (0, 1)",
             )
 
+        ep = prof.get("exit_policy", {})
+        if ep:
+            if "enabled" in ep:
+                require(
+                    isinstance(ep.get("enabled"), bool),
+                    f"profile '{pname}': exit_policy.enabled must be a boolean",
+                )
+            hold = ep.get("hold_to_resolve") or {}
+            if hold:
+                if "min_bid" in hold:
+                    require(
+                        _num(hold.get("min_bid")) and 0 < hold["min_bid"] < 1,
+                        f"profile '{pname}': exit_policy.hold_to_resolve.min_bid must be in (0,1)",
+                    )
+                if "max_seconds_left" in hold:
+                    require(
+                        _num(hold.get("max_seconds_left")) and hold["max_seconds_left"] >= 0,
+                        f"profile '{pname}': exit_policy.hold_to_resolve.max_seconds_left must be >= 0",
+                    )
+                if "exit_before_sec" in hold:
+                    require(
+                        _num(hold.get("exit_before_sec")) and hold["exit_before_sec"] >= 0,
+                        f"profile '{pname}': exit_policy.hold_to_resolve.exit_before_sec must be >= 0",
+                    )
+            early = ep.get("early_cut") or {}
+            if early:
+                if "max_seconds_left" in early:
+                    require(
+                        _num(early.get("max_seconds_left")) and early["max_seconds_left"] >= 0,
+                        f"profile '{pname}': exit_policy.early_cut.max_seconds_left must be >= 0",
+                    )
+                if "min_adverse_from_entry" in early:
+                    require(
+                        _num(early.get("min_adverse_from_entry"))
+                        and 0 <= early["min_adverse_from_entry"] < 1,
+                        f"profile '{pname}': exit_policy.early_cut.min_adverse_from_entry must be in [0,1)",
+                    )
+
         rc = prof.get("risk_controls", {})
         if rc:
             require(
@@ -295,6 +333,7 @@ def get_profile(cfg: Dict[str, Any], name: str) -> Dict[str, Any]:
         "min_edge": float(rc.get("min_edge", 0.0)),
         "require_ev_gate": bool(rc.get("require_ev_gate", False)),
         "session_filter": sf,
+        "exit_policy": dict(prof.get("exit_policy", {}) or {}),
         "hedge": dict(prof.get("hedge", {})),
         "stop_loss": dict(prof.get("stop_loss", {})),
         # shared execution safety

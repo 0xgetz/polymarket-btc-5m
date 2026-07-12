@@ -210,6 +210,17 @@ python scripts/polybtc_preflight.py --profile conservative \
 Tune in `config/polybtc_profiles.yaml`:
 - `risk_controls.require_ev_gate` / `min_edge`
 - `session_filter.enabled` / `block_hours_utc` / `allow_hours_utc`
+- `exit_policy.hold_to_resolve` / `exit_policy.early_cut` (managed exits)
+
+### Managed exit (hold vs cut)
+After entry the runner no longer only does “stop or exit_before_sec”:
+
+1. **Stop-loss** on CLOB best bid (unchanged priority)
+2. **Hold-to-resolve** if bid ≥ ~0.95 near close → delay exit (default last ~3s)
+3. **Early-cut** if underwater (≥3% off entry) or BTC move flips against the side near expiry
+4. Otherwise **time exit** at `exit_before_sec`
+
+Logic is pure and unit-tested in `polybtc_live_safety.decide_exit`.
 
 ### Trade analytics / log backtest
 Measure the **real** win-rate, expectancy, profit factor, max drawdown, and

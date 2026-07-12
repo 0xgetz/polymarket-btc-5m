@@ -76,6 +76,18 @@ profiles:
     stop_loss:
       enabled: true
       stop_loss_pct_from_entry: 0.25
+    exit_policy:
+      enabled: true
+      hold_to_resolve:
+        enabled: true
+        min_bid: 0.95
+        max_seconds_left: 45
+        exit_before_sec: 3
+      early_cut:
+        enabled: true
+        max_seconds_left: 40
+        min_adverse_from_entry: 0.03
+        on_btc_reverse: true
 
   aggressive:
     description: "Higher frequency and higher risk mode."
@@ -112,6 +124,18 @@ profiles:
     stop_loss:
       enabled: true
       stop_loss_pct_from_entry: 0.30
+    exit_policy:
+      enabled: true
+      hold_to_resolve:
+        enabled: true
+        min_bid: 0.93
+        max_seconds_left: 50
+        exit_before_sec: 3
+      early_cut:
+        enabled: true
+        max_seconds_left: 45
+        min_adverse_from_entry: 0.04
+        on_btc_reverse: true
 
   # Selective mode: fewer trades, higher market-implied confidence band.
   # NOTE: win-rate ≠ profit. Entry ~0.85 needs true WR > 85% just to break even.
@@ -155,6 +179,18 @@ profiles:
     stop_loss:
       enabled: true
       stop_loss_pct_from_entry: 0.20
+    exit_policy:
+      enabled: true
+      hold_to_resolve:
+        enabled: true
+        min_bid: 0.95
+        max_seconds_left: 40
+        exit_before_sec: 2
+      early_cut:
+        enabled: true
+        max_seconds_left: 35
+        min_adverse_from_entry: 0.025
+        on_btc_reverse: true
 
 runner_mapping:
   script: "skills/polybtc-momentum/scripts/test_polybtc_session_exit_sl.py"
@@ -179,5 +215,6 @@ notes:
   - "confirm_polls: same-side GO must hold across N consecutive polls before entry."
   - "require_ev_gate: block when heuristic edge (est_win_prob - entry) < min_edge."
   - "session_filter: optional UTC hour allow/block list to skip weak sessions."
+  - "exit_policy: hold-to-resolve near 0.95, early-cut if underwater/BTC reverse near expiry."
   - "high_confidence aims for quality over frequency — not a guaranteed 90% win rate."
   - "Buying at price p requires true win-rate > p for positive EV (e.g. 0.90 entry needs >90%)."

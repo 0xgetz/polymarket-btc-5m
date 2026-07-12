@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import polybtc_live_safety as safety
 from polybtc_config import get_profile, load_config
+from polybtc_live_safety import decide_exit, merge_exit_policy
 
 
 def test_close_limit_respects_floor_when_bid_missing():
@@ -52,6 +53,117 @@ def test_guard_state_from_pnls_blocks_after_streak():
 
 def test_stop_loss_price():
     assert abs(safety.stop_loss_price(0.80, 0.25) - 0.60) < 1e-9
+
+
+def test_decide_exit_stop_loss_priority():
+    d = decide_exit(
+        entry_price=0.80,
+        best_bid=0.55,
+        seconds_left=100,
+        stop_loss_px=0.60,
+        exit_before_sec=20,
+        side="UP",
+    )
+    assert d.action == "close"
+    assert d.reason == "stop_loss"
+
+
+def test_decide_exit_hold_to_resolve_skips_early_time_exit():
+    policy = merge_exit_policy(
+        {
+            "exit_policy": {
+                "enabled": True,
+                "hold_to_resolve": {
+                    "enabled": True,
+                    "min_bid": 0.95,
+                    "max_seconds_left": 45,
+                    "exit_before_sec": 3,
+                },
+                "early_cut": {"enabled": True, "max_seconds_left": 40, "min_adverse_from_entry": 0.03},
+            }
+        }
+    )
+    # 15s left would normally hit exit_before_sec=20, but hold rides longer.
+    d = decide_exit(
+        entry_price=0.80,
+        best_bid=0.96,
+        seconds_left=15,
+        stop_loss_px=0.60,
+        exit_before_sec=20,
+        side="UP",
+        exit_policy=policy,
+    )
+    assert d.action == "hold"
+    assert d.hold_to_resolve is True
+    assert d.effective_exit_before_sec == 3
+
+
+def test_decide_exit_hold_to_resolve_time_exit_near_end():
+    policy = merge_exit_policy({})
+    d = decide_exit(
+        entry_price=0.80,
+        best_bid=0.97,
+        seconds_left=2,
+        stop_loss_px=0.60,
+        exit_before_sec=20,
+        side="UP",
+        exit_policy=policy,
+    )
+    assert d.action == "close"
+    assert "hold_to_resolve_time_exit" in d.reason or "time_exit" in d.reason
+
+
+def test_decide_exit_early_cut_underwater():
+    policy = merge_exit_policy({})
+    d = decide_exit(
+        entry_price=0.80,
+        best_bid=0.76,  # 5% adverse
+        seconds_left=30,
+        stop_loss_px=0.60,
+        exit_before_sec=20,
+        side="UP",
+        exit_policy=policy,
+    )
+    assert d.action == "close"
+    assert d.reason.startswith("early_cut_underwater")
+
+
+def test_decide_exit_early_cut_btc_reverse():
+    policy = merge_exit_policy({})
+    d = decide_exit(
+        entry_price=0.80,
+        best_bid=0.82,  # still green on book
+        seconds_left=35,
+        stop_loss_px=0.60,
+        exit_before_sec=20,
+        side="UP",
+        btc_move_usd=-40,
+        exit_policy=policy,
+    )
+    assert d.action == "close"
+    assert "btc_reverse" in d.reason
+
+
+def test_decide_exit_time_exit_default():
+    d = decide_exit(
+        entry_price=0.80,
+        best_bid=0.85,
+        seconds_left=10,
+        stop_loss_px=0.60,
+        exit_before_sec=20,
+        side="UP",
+    )
+    assert d.action == "close"
+    assert d.reason.startswith("time_exit_")
+
+
+def test_merge_exit_policy_from_profile():
+    cfg = load_config()
+    prof = get_profile(cfg, "conservative")
+    pol = merge_exit_policy(prof)
+    assert pol["enabled"] is True
+    assert pol["hold_to_resolve"]["enabled"] is True
+    assert pol["early_cut"]["enabled"] is True
 
 
 def test_pnls_for_today_filters_by_day():

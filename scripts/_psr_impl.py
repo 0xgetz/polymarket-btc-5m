@@ -30,6 +30,8 @@ from polybtc_guardrails import check_guards  # noqa: E402
 from polybtc_live_safety import (  # noqa: E402
     build_guard_state_from_pnls,
     close_limit_price,
+    decide_exit,
+    merge_exit_policy,
     open_execution_env,
     pnls_for_today_from_trades,
     stop_loss_price,
@@ -764,25 +766,67 @@ def main() -> None:
 
     sl_price = stop_loss_price(opened["entry_price"], args.stop_loss_pct)
     report["stop_loss_price"] = sl_price
+    exit_policy = merge_exit_policy(work_profile)
+    report["exit_policy"] = exit_policy
 
     close_reason = None
+    exit_ticks: list[dict[str, Any]] = []
     while True:
         now = time.time()
-        if now >= (end_ts - args.exit_before_sec):
-            close_reason = f"time_exit_{args.exit_before_sec}s_before_end"
-            break
+        sec_left = max(0.0, float(end_ts) - now)
 
-        # Stop-loss mark: CLOB best bid (executable exit), not Gamma mid.
+        # Stop-loss / exit marks: CLOB best bid (executable exit), not Gamma mid.
         try:
             side_px = clob_best_bid(opened["token_id"])
         except Exception:
             side_px = None
+
+        # Optional BTC reverse check for early-cut (best-effort; skip if feed down).
+        btc_move_now: Optional[float] = None
+        early_cfg = (exit_policy.get("early_cut") or {})
+        if early_cfg.get("enabled", True) and early_cfg.get("on_btc_reverse", True):
+            if args.btc_move_usd is not None:
+                btc_move_now = float(args.btc_move_usd)
+            elif not args.skip_btc_move:
+                try:
+                    btc_move_now = btc_move_usd_current_5m()
+                except Exception:
+                    btc_move_now = None
+
+        decision_x = decide_exit(
+            entry_price=float(opened["entry_price"]),
+            best_bid=side_px,
+            seconds_left=sec_left,
+            stop_loss_px=float(sl_price),
+            exit_before_sec=float(args.exit_before_sec),
+            side=str(opened.get("side") or "UP"),
+            btc_move_usd=btc_move_now,
+            exit_policy=exit_policy,
+        )
+        tick = {
+            "ts": ts_utc(),
+            "seconds_left": round(sec_left, 2),
+            "best_bid": side_px,
+            "btc_move_usd": btc_move_now,
+            "action": decision_x.action,
+            "reason": decision_x.reason,
+            "hold_to_resolve": decision_x.hold_to_resolve,
+            "effective_exit_before_sec": decision_x.effective_exit_before_sec,
+        }
+        exit_ticks.append(tick)
         report["last_side_price"] = side_px
         report["last_check_at"] = ts_utc()
-        if side_px is not None and side_px <= sl_price:
-            close_reason = f"stop_loss_{int(args.stop_loss_pct * 100)}pct"
+        report["last_exit_decision"] = tick
+
+        if decision_x.action == "close":
+            if decision_x.reason == "stop_loss":
+                close_reason = f"stop_loss_{int(args.stop_loss_pct * 100)}pct"
+            else:
+                close_reason = decision_x.reason
             break
         time.sleep(args.poll_sec)
+
+    report["exit_ticks"] = exit_ticks[-40:]  # cap log size
 
     close_debug: list[dict[str, Any]] = []
     close_obj: dict[str, Any] = {}

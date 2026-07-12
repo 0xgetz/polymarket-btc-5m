@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 ### Added
+- **Managed exit policy** (`exit_policy` + `decide_exit` in `polybtc_live_safety`):
+  hold-to-resolve when bid is extreme near close (ride later than
+  `exit_before_sec`), early-cut if underwater or BTC reverses against the
+  held side near expiry, hard stop-loss still first. Wired into the live
+  monitor loop with `exit_ticks` logging.
 - **Heuristic EV gate** (`require_ev_gate` + `estimate_win_prob`): preflight
   estimates win-prob from impulse / skew / timing, then requires
   `est_win_prob - entry >= min_edge` before GO. Surfaces `estimated_win_prob`
