@@ -138,24 +138,70 @@ def evaluate(profile: Dict[str, Any], market: MarketSnapshot) -> Decision:
             f"min ${profile['skip_if_top_ask_notional_usd_lt']:.0f}"
         )
 
-    # 6) Side selection (momentum): pick the side whose ask >= threshold; if
+    # 6) Optional hard entry-window (target ± tolerance). Soft flag always set above.
+    require_window = bool(profile.get("require_entry_window", False))
+    if require_window:
+        checks["entry_window"] = in_window
+        if not in_window:
+            reasons.append(
+                f"seconds_left {market.seconds_left:.0f} outside entry window "
+                f"{tgt - tol:.0f}–{tgt + tol:.0f}s"
+            )
+
+    # 7) Side selection (momentum): pick the side whose ask >= threshold; if
     #    both qualify, take the stronger (higher ask).
     thr = profile["threshold_price"]
+    max_entry = profile.get("max_entry_price")
     candidates = []
     if market.up_ask is not None and market.up_ask >= thr:
         candidates.append(("UP", float(market.up_ask)))
     if market.dn_ask is not None and market.dn_ask >= thr:
         candidates.append(("DOWN", float(market.dn_ask)))
+    # Drop absurdly rich prices (tiny payout; market already ~priced in).
+    blocked_by_max_entry = False
+    if max_entry is not None and candidates:
+        capped = [(s, p) for s, p in candidates if p <= float(max_entry)]
+        if not capped and candidates:
+            blocked_by_max_entry = True
+            reasons.append(
+                f"all candidates above max_entry_price {float(max_entry):.2f} "
+                f"({', '.join(f'{s}@{p:.2f}' for s, p in candidates)})"
+            )
+        candidates = capped
     side: Optional[str] = None
     entry_price: Optional[float] = None
     if candidates:
         side, entry_price = max(candidates, key=lambda c: c[1])
     ok_side = side is not None
     checks["threshold_side"] = ok_side
-    if not ok_side:
+    if not ok_side and not blocked_by_max_entry:
         ua = "n/a" if market.up_ask is None else f"{market.up_ask:.2f}"
         da = "n/a" if market.dn_ask is None else f"{market.dn_ask:.2f}"
         reasons.append(f"no side >= threshold {thr:.2f} (UP {ua}, DOWN {da})")
+
+    # 8) Direction alignment: BTC impulse sign must match chosen side.
+    #    Prevents buying UP after a dump just because ask is still elevated.
+    require_aligned = bool(profile.get("require_move_aligned", False))
+    if require_aligned:
+        aligned = False
+        if side == "UP" and market.btc_move_usd > 0:
+            aligned = True
+        elif side == "DOWN" and market.btc_move_usd < 0:
+            aligned = True
+        checks["move_aligned"] = aligned if side is not None else False
+        if side is not None and not aligned:
+            reasons.append(
+                f"btc_move ${market.btc_move_usd:+.0f} not aligned with side {side}"
+            )
+    elif side is not None:
+        # Soft annotation only when filter is off.
+        if (side == "UP" and market.btc_move_usd < 0) or (
+            side == "DOWN" and market.btc_move_usd > 0
+        ):
+            reasons.append(
+                f"note: btc_move ${market.btc_move_usd:+.0f} opposite to {side} "
+                f"(enable require_move_aligned to block)"
+            )
 
     # --- aggregate ---
     ok = all(checks.values())
