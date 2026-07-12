@@ -31,7 +31,7 @@ def test_shipped_config_is_valid(cfg):
 
 
 def test_expected_profiles_present(cfg):
-    assert {"conservative", "aggressive"} <= set(cfg["profiles"])
+    assert {"conservative", "aggressive", "high_confidence"} <= set(cfg["profiles"])
 
 
 def test_get_profile_flattens_fields(conservative):
@@ -102,9 +102,48 @@ def test_stake_capped_by_max_notional(cfg):
 
 
 def test_picks_stronger_side_when_both_qualify(conservative):
-    m = _good_market(conservative, up_ask=0.72, dn_ask=0.80)
+    # DOWN is stronger; move must be negative when require_move_aligned is on.
+    m = _good_market(conservative, up_ask=0.72, dn_ask=0.80, btc_move_usd=-90)
     d = evaluate(conservative, m)
     assert d.ok and d.side == "DOWN" and d.entry_price == 0.80
+
+
+def test_blocks_misaligned_impulse(conservative):
+    # Positive BTC move but DOWN is the only side over threshold → blocked.
+    m = _good_market(conservative, up_ask=0.40, dn_ask=0.80, btc_move_usd=90)
+    d = evaluate(conservative, m)
+    assert d.ok is False
+    assert d.checks.get("move_aligned") is False
+
+
+def test_max_entry_price_blocks_rich_asks(cfg):
+    prof = cfgmod.get_profile(cfg, "high_confidence")
+    m = _good_market(
+        prof,
+        up_ask=0.97,
+        dn_ask=0.05,
+        btc_move_usd=prof["btc_move_usd_min"] + 5,
+        seconds_left=prof["entry_window_seconds_left_target"],
+    )
+    d = evaluate(prof, m)
+    assert d.ok is False
+    assert d.checks["threshold_side"] is False
+
+
+def test_high_confidence_go_in_window(cfg):
+    prof = cfgmod.get_profile(cfg, "high_confidence")
+    m = _good_market(
+        prof,
+        up_ask=0.86,
+        dn_ask=0.16,
+        btc_move_usd=prof["btc_move_usd_min"] + 10,
+        seconds_left=prof["entry_window_seconds_left_target"],
+    )
+    d = evaluate(prof, m)
+    assert d.ok is True
+    assert d.side == "UP"
+    assert d.checks.get("move_aligned") is True
+    assert d.checks.get("entry_window") is True
 
 
 def test_nogo_on_thin_liquidity(conservative):
