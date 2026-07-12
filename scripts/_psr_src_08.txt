@@ -1,0 +1,33 @@
+    post_status = str(post.get("status") or "").lower()
+    close_usdc = float(post.get("takingAmount") or 0)
+    closed = {
+        "close_reason": close_reason,
+        "closed_at": ts_utc(),
+        "close_success": bool(post.get("success") is True and (post_status == "matched" or close_usdc > 0)),
+        "close_status": post.get("status"),
+        "close_order_id": post.get("orderID"),
+        "close_tx": (post.get("transactionsHashes") or [None])[0],
+        "close_shares": float(post.get("makingAmount") or 0),
+        "close_usdc": close_usdc,
+        "close_skipped": close_obj.get("close_skipped"),
+    }
+    report["close_debug"] = close_debug
+    if fallback_used:
+        report["close_fallback"] = fallback_used
+    if force_close_used:
+        report["close_force"] = force_close_used
+    report["close_raw"] = out[-4000:]
+    report["closed"] = closed
+
+    pnl = None
+    if closed["close_usdc"]:
+        pnl = round(closed["close_usdc"] - opened["cost_usdc"], 6)
+    report["realized_cashflow_pnl_usdc"] = pnl
+    report["finished_at"] = ts_utc()
+    report["result"] = "done"
+
+    print(json.dumps(report, ensure_ascii=False, indent=2))
+
+
+if __name__ == "__main__":
+    main()
