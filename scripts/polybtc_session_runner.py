@@ -13,7 +13,7 @@ _IMPL = _DIR / "_psr_impl.py"
 
 
 def _load():
-    if not _IMPL.exists() or _IMPL.stat().st_size < 1000:
+    if not _IMPL.exists():
         raise FileNotFoundError(
             f"Missing session runner implementation: {_IMPL}\n"
             "Expected scripts/_psr_impl.py to be present in the repository."
@@ -22,6 +22,10 @@ def _load():
     if spec is None or spec.loader is None:
         raise ImportError(f"Cannot load module from {_IMPL}")
     mod = importlib.util.module_from_spec(spec)
+    # Ensure scripts dir is importable for modular deps.
+    import sys
+    if str(_DIR) not in sys.path:
+        sys.path.insert(0, str(_DIR))
     spec.loader.exec_module(mod)
     return mod
 
