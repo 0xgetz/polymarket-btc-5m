@@ -125,6 +125,27 @@ def validate_config(cfg: Dict[str, Any]) -> List[str]:
             _num(sig.get("threshold_price")) and 0 < sig["threshold_price"] < 1,
             f"profile '{pname}': signal.threshold_price must be in (0, 1)",
         )
+        if "max_entry_price" in sig:
+            require(
+                _num(sig.get("max_entry_price")) and 0 < sig["max_entry_price"] <= 1,
+                f"profile '{pname}': signal.max_entry_price must be in (0, 1]",
+            )
+            if _num(sig.get("threshold_price")) and _num(sig.get("max_entry_price")):
+                require(
+                    sig["max_entry_price"] >= sig["threshold_price"],
+                    f"profile '{pname}': signal.max_entry_price must be >= threshold_price",
+                )
+        if "btc_move_usd_min" in sig:
+            require(
+                _num(sig.get("btc_move_usd_min")) and sig["btc_move_usd_min"] > 0,
+                f"profile '{pname}': signal.btc_move_usd_min must be > 0",
+            )
+        for flag in ("require_move_aligned", "require_entry_window"):
+            if flag in sig:
+                require(
+                    isinstance(sig.get(flag), bool),
+                    f"profile '{pname}': signal.{flag} must be a boolean",
+                )
         sizing = prof.get("sizing", {})
         stake = sizing.get("stake_usd")
         maxn = sizing.get("max_notional_usd")
@@ -185,10 +206,21 @@ def get_profile(cfg: Dict[str, Any], name: str) -> Dict[str, Any]:
     es = cfg.get("shared_rules", {}).get("execution_safety", {})
     st = cfg.get("shared_rules", {}).get("session_timing", {})
 
+    sig = prof.get("signal", {})
+    # Per-profile impulse / quality overrides fall back to strategy_reference.
+    btc_min = sig.get("btc_move_usd_min", sr["btc_move_usd_min"])
+    btc_max_ref = sig.get(
+        "btc_move_usd_max_reference",
+        sr.get("btc_move_usd_max_reference", sr["btc_move_usd_min"]),
+    )
+    max_entry = sig.get("max_entry_price")
     return {
         "name": name,
         # signal / sizing
-        "threshold_price": float(prof["signal"]["threshold_price"]),
+        "threshold_price": float(sig["threshold_price"]),
+        "require_move_aligned": bool(sig.get("require_move_aligned", False)),
+        "require_entry_window": bool(sig.get("require_entry_window", False)),
+        "max_entry_price": float(max_entry) if max_entry is not None else None,
         "stake_usd": float(prof["sizing"]["stake_usd"]),
         "max_notional_usd": float(prof["sizing"]["max_notional_usd"]),
         "daily_max_loss_pct": float(prof["sizing"]["daily_max_loss_pct"]),
@@ -206,9 +238,9 @@ def get_profile(cfg: Dict[str, Any], name: str) -> Dict[str, Any]:
         # session timing
         "min_entry_seconds_left": int(st["min_entry_seconds_left"]),
         "exit_before_sec": int(st["exit_before_sec"]),
-        # strategy reference
-        "btc_move_usd_min": float(sr["btc_move_usd_min"]),
-        "btc_move_usd_max_reference": float(sr.get("btc_move_usd_max_reference", sr["btc_move_usd_min"])),
+        # strategy reference (profile signal may override impulse mins)
+        "btc_move_usd_min": float(btc_min),
+        "btc_move_usd_max_reference": float(btc_max_ref),
         "entry_window_seconds_left_target": int(sr["entry_window_seconds_left_target"]),
         "entry_window_seconds_left_tolerance": int(sr["entry_window_seconds_left_tolerance"]),
     }
