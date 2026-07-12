@@ -10,7 +10,13 @@ SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 
 import polybtc_config as cfgmod  # noqa: E402
-from polybtc_preflight import MarketSnapshot, evaluate, compute_hedge  # noqa: E402
+from polybtc_preflight import (  # noqa: E402
+    MarketSnapshot,
+    evaluate,
+    compute_hedge,
+    estimate_win_prob,
+    session_hour_allowed,
+)
 
 
 @pytest.fixture(scope="module")
@@ -200,6 +206,85 @@ def test_profile_exposes_accuracy_filters(cfg):
     assert prof.get("min_skew_gap") is not None
     assert prof.get("confirm_polls", 1) >= 1
     assert prof.get("btc_move_usd_max") is not None
+    assert "require_ev_gate" in prof
+    assert "session_filter" in prof
+
+
+def test_estimate_win_prob_rewards_strong_setup():
+    weak = estimate_win_prob(
+        entry_price=0.80,
+        abs_move_usd=70,
+        move_min_usd=70,
+        skew_gap=0.05,
+        in_target_window=False,
+        seconds_left=200,
+    )
+    strong = estimate_win_prob(
+        entry_price=0.80,
+        abs_move_usd=140,
+        move_min_usd=70,
+        skew_gap=0.40,
+        in_target_window=True,
+        seconds_left=120,
+    )
+    assert strong > weak
+    assert strong > 0.80  # positive estimated edge on strong setup
+
+
+def test_ev_gate_blocks_thin_edge(conservative):
+    prof = dict(conservative, require_ev_gate=True, min_edge=0.20)
+    # Strong enough to pass other filters but not a +20pp heuristic edge.
+    m = _good_market(conservative, up_ask=0.74, dn_ask=0.28, btc_move_usd=80, hour_utc=14)
+    d = evaluate(prof, m)
+    assert d.ok is False
+    assert d.checks.get("ev_gate") is False
+    assert d.edge is not None and d.edge < 0.20
+
+
+def test_ev_gate_passes_good_setup(conservative):
+    prof = dict(conservative, require_ev_gate=True, min_edge=0.02)
+    m = _good_market(
+        conservative,
+        up_ask=0.72,
+        dn_ask=0.28,
+        btc_move_usd=120,
+        hour_utc=14,
+    )
+    d = evaluate(prof, m)
+    assert d.ok is True
+    assert d.checks.get("ev_gate") is True
+    assert d.estimated_win_prob is not None
+    assert d.edge is not None and d.edge >= 0.02
+
+
+def test_session_filter_blocks_listed_hours(conservative):
+    prof = dict(
+        conservative,
+        session_filter={
+            "enabled": True,
+            "require_hour": True,
+            "block_hours_utc": [3, 4],
+            "allow_hours_utc": None,
+        },
+    )
+    m = _good_market(conservative, hour_utc=3)
+    d = evaluate(prof, m)
+    assert d.ok is False
+    assert d.checks.get("session_hour") is False
+
+
+def test_session_filter_allowlist(conservative):
+    ok, _ = session_hour_allowed(
+        {"session_filter": {"enabled": True, "allow_hours_utc": [12, 13], "block_hours_utc": []}},
+        12,
+    )
+    bad, reason = session_hour_allowed(
+        {"session_filter": {"enabled": True, "allow_hours_utc": [12, 13], "block_hours_utc": []}},
+        9,
+    )
+    assert ok is True
+    assert bad is False
+    assert "allow_hours_utc" in reason
 
 
 def test_nogo_on_thin_liquidity(conservative):
@@ -274,5 +359,9 @@ def test_no_hedge_outside_time_window(conservative):
 
 def test_entry_decision_has_no_hedge_in_entry_window(conservative):
     # At a normal entry (well before close) the entry Decision carries no hedge.
-    d = evaluate(conservative, _good_market(conservative, up_ask=0.97))
+    # Keep price below "ultra-rich" so EV gate still clears.
+    d = evaluate(
+        conservative,
+        _good_market(conservative, up_ask=0.80, dn_ask=0.22, btc_move_usd=110, hour_utc=14),
+    )
     assert d.ok and d.hedge is None

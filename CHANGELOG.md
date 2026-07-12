@@ -4,6 +4,14 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 ### Added
+- **Heuristic EV gate** (`require_ev_gate` + `estimate_win_prob`): preflight
+  estimates win-prob from impulse / skew / timing, then requires
+  `est_win_prob - entry >= min_edge` before GO. Surfaces `estimated_win_prob`
+  and `edge` on every Decision.
+- **UTC session filter** (`session_filter`): optional `allow_hours_utc` /
+  `block_hours_utc` (defaults: conservative/high_confidence block thin
+  overnight hours). Live runner stamps `hour_utc`; backtest parses it from
+  `timestamp` or an `hour_utc` column.
 - **Accuracy calibrator** (`scripts/polybtc_calibrate.py`): grid-search
   threshold / skew / impulse min-max against a CSV via the same preflight
   backtest path; ranks by expectancy with a soft min-trades floor.

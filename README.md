@@ -194,6 +194,23 @@ python scripts/polybtc_calibrate.py \
   --profile conservative --top 10 --min-trades 2
 ```
 
+### EV gate + session filter
+Preflight can hard-block low-edge setups using a **heuristic** win-prob
+(`estimate_win_prob`: impulse / skew / timing bonuses, rich-price haircut)
+and `min_edge`. Session hours (UTC) can be blocked or allow-listed per profile.
+
+```bash
+# Example: GO only if heuristic edge clears min_edge and hour is allowed
+python scripts/polybtc_preflight.py --profile conservative \
+  --seconds-left 118 --btc-move-usd 110 \
+  --up-ask 0.74 --dn-ask 0.28 --spread 0.02 --top-ask-notional 50 \
+  --hour-utc 14
+```
+
+Tune in `config/polybtc_profiles.yaml`:
+- `risk_controls.require_ev_gate` / `min_edge`
+- `session_filter.enabled` / `block_hours_utc` / `allow_hours_utc`
+
 ### Trade analytics / log backtest
 Measure the **real** win-rate, expectancy, profit factor, max drawdown, and
 streaks from your runtime logs — the only honest way to know whether the edge is

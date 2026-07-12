@@ -59,6 +59,13 @@ profiles:
     risk_controls:
       max_consecutive_losses: 3
       min_edge: 0.02
+      # Hard EV gate using heuristic win-prob (see polybtc_preflight.estimate_win_prob).
+      require_ev_gate: true
+    session_filter:
+      enabled: true
+      require_hour: false
+      # Thin / noisy UTC overnight hours — tune with analytics per your timezone.
+      block_hours_utc: [0, 1, 2, 3, 4]
     hedge:
       enabled: true
       trigger_side_price_gte: 0.95
@@ -90,6 +97,11 @@ profiles:
     risk_controls:
       max_consecutive_losses: 5
       min_edge: 0.01
+      require_ev_gate: true
+    session_filter:
+      enabled: false
+      require_hour: false
+      block_hours_utc: []
     hedge:
       enabled: true
       trigger_side_price_gte: 0.93
@@ -127,6 +139,12 @@ profiles:
     risk_controls:
       max_consecutive_losses: 2
       min_edge: 0.03
+      require_ev_gate: true
+    session_filter:
+      enabled: true
+      require_hour: false
+      # More selective: avoid thin overnight + optional allow-list can be set later.
+      block_hours_utc: [0, 1, 2, 3, 4, 5]
     hedge:
       enabled: true
       trigger_side_price_gte: 0.95
@@ -159,5 +177,7 @@ notes:
   - "btc_move_usd_max: skip blow-off candles above this absolute USD move."
   - "min_skew_gap: chosen_ask - opposite_ask must clear this (market skew confirmation)."
   - "confirm_polls: same-side GO must hold across N consecutive polls before entry."
+  - "require_ev_gate: block when heuristic edge (est_win_prob - entry) < min_edge."
+  - "session_filter: optional UTC hour allow/block list to skip weak sessions."
   - "high_confidence aims for quality over frequency — not a guaranteed 90% win rate."
   - "Buying at price p requires true win-rate > p for positive EV (e.g. 0.90 entry needs >90%)."

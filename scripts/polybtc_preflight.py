@@ -8,6 +8,10 @@ current market, it returns a structured GO / NO-GO decision: chosen side,
 recommended stake, optional micro-hedge, stop-loss price, and per-check
 pass/fail reasons.
 
+Also supports:
+  * heuristic win-prob + EV gate (``require_ev_gate`` / ``min_edge``)
+  * UTC session hour filter (``session_filter``)
+
 This contains no network or order-placement logic, so it is fully
 deterministic and unit-testable. Runners can import ``evaluate`` to gate live
 orders; operators can run it as a CLI for manual dry-run checks.
@@ -15,7 +19,7 @@ orders; operators can run it as a CLI for manual dry-run checks.
 CLI:
     python scripts/polybtc_preflight.py --profile conservative \\
         --seconds-left 118 --btc-move-usd 84 --up-ask 0.71 --dn-ask 0.29 \\
-        --spread 0.02 --top-ask-notional 41 --quote-age-sec 1
+        --spread 0.02 --top-ask-notional 41 --quote-age-sec 1 --hour-utc 14
 """
 from __future__ import annotations
 
@@ -36,6 +40,7 @@ class MarketSnapshot:
     spread: float                # top-of-book spread of the picked side
     top_ask_notional_usd: float  # notional available at top ask ($)
     quote_age_sec: float = 0.0   # age of the latest quote (staleness)
+    hour_utc: Optional[int] = None  # 0-23 for session filter; None = unknown
 
 
 @dataclass
@@ -51,6 +56,8 @@ class Decision:
     reasons: List[str] = field(default_factory=list)        # human-readable notes
     in_target_window: bool = False             # soft: within ideal ~target window
     skew_gap: Optional[float] = None           # chosen_ask - opposite_ask when available
+    estimated_win_prob: Optional[float] = None  # heuristic P(win)
+    edge: Optional[float] = None               # estimated_win_prob - entry_price
 
 
 @dataclass
@@ -86,6 +93,85 @@ class ConfirmTracker:
 
 def _round(x: Optional[float], n: int = 4) -> Optional[float]:
     return None if x is None else round(float(x), n)
+
+
+def _clip(x: float, lo: float, hi: float) -> float:
+    return max(lo, min(hi, x))
+
+
+def estimate_win_prob(
+    *,
+    entry_price: float,
+    abs_move_usd: float,
+    move_min_usd: float,
+    skew_gap: Optional[float],
+    in_target_window: bool,
+    seconds_left: float,
+) -> float:
+    """Heuristic P(win | features) for EV gating.
+
+    Starts at the market-implied price and adds small bonuses for impulse,
+    skew, and timing — then haircuts rich asks that are hard to beat. This is
+    **not** a calibrated ML model; treat it as a conservative filter only.
+    """
+    p = float(entry_price)
+    if not 0 < p < 1:
+        return 0.0
+
+    extra = max(0.0, float(abs_move_usd) - float(move_min_usd))
+    move_bonus = min(1.0, extra / 80.0) * 0.04
+
+    sg = 0.0 if skew_gap is None else max(0.0, float(skew_gap))
+    skew_bonus = min(1.0, sg / 0.40) * 0.035
+
+    window_bonus = 0.015 if in_target_window else 0.0
+    if 60.0 <= float(seconds_left) <= 150.0:
+        time_bonus = 0.01
+    elif float(seconds_left) < 60.0:
+        time_bonus = -0.01
+    else:
+        time_bonus = 0.0
+
+    # At high entry prices the break-even bar is brutal; haircut estimated edge.
+    rich_haircut = max(0.0, (p - 0.78) * 0.25)
+
+    est = p + move_bonus + skew_bonus + window_bonus + time_bonus - rich_haircut
+    return _clip(est, 0.05, 0.98)
+
+
+def session_hour_allowed(
+    profile: Dict[str, Any],
+    hour_utc: Optional[int],
+) -> Tuple[bool, str]:
+    """Return (allowed, reason_if_blocked) for the UTC session filter."""
+    sf = profile.get("session_filter") or {}
+    if not sf.get("enabled"):
+        return True, ""
+
+    if hour_utc is None:
+        if sf.get("require_hour", False):
+            return False, "hour_utc missing (session_filter.require_hour)"
+        # Soft: unknown hour does not block when require_hour is false.
+        return True, ""
+
+    try:
+        h = int(hour_utc)
+    except (TypeError, ValueError):
+        return False, f"invalid hour_utc {hour_utc!r}"
+    if not 0 <= h <= 23:
+        return False, f"hour_utc {h} out of range 0-23"
+
+    allow = sf.get("allow_hours_utc")
+    if allow is not None:
+        allow_set = {int(x) for x in allow}
+        if h not in allow_set:
+            return False, f"hour_utc {h} not in allow_hours_utc {sorted(allow_set)}"
+
+    block = {int(x) for x in (sf.get("block_hours_utc") or [])}
+    if h in block:
+        return False, f"hour_utc {h} in block_hours_utc"
+
+    return True, ""
 
 
 def compute_hedge(
@@ -126,6 +212,14 @@ def evaluate(profile: Dict[str, Any], market: MarketSnapshot) -> Decision:
     """Run all hard guards + side selection and return a Decision."""
     checks: Dict[str, bool] = {}
     reasons: List[str] = []
+
+    # 0) Session hour filter (UTC) — skip historically weak windows when configured.
+    ok_session, session_reason = session_hour_allowed(profile, market.hour_utc)
+    sf = profile.get("session_filter") or {}
+    if sf.get("enabled"):
+        checks["session_hour"] = ok_session
+        if not ok_session:
+            reasons.append(session_reason)
 
     # 1) Time-to-close: must have enough seconds left to safely enter.
     min_left = profile["min_entry_seconds_left"]
@@ -272,6 +366,35 @@ def evaluate(profile: Dict[str, Any], market: MarketSnapshot) -> Decision:
         else:
             skew_gap = float(market.dn_ask) - float(market.up_ask)
 
+    # 10) Heuristic win-prob + EV gate: only buy when estimated edge clears min_edge.
+    estimated_win_prob: Optional[float] = None
+    trade_edge: Optional[float] = None
+    require_ev = bool(profile.get("require_ev_gate", False))
+    min_edge = float(profile.get("min_edge", 0.0) or 0.0)
+    if side is not None and entry_price is not None:
+        estimated_win_prob = estimate_win_prob(
+            entry_price=float(entry_price),
+            abs_move_usd=abs_move,
+            move_min_usd=float(move_min),
+            skew_gap=skew_gap,
+            in_target_window=in_window,
+            seconds_left=float(market.seconds_left),
+        )
+        trade_edge = estimated_win_prob - float(entry_price)
+        if require_ev:
+            ok_ev = trade_edge >= min_edge
+            checks["ev_gate"] = ok_ev
+            if not ok_ev:
+                reasons.append(
+                    f"edge {trade_edge:+.3f} < min_edge {min_edge:.3f} "
+                    f"(est_win_prob {estimated_win_prob:.3f} vs entry {entry_price:.3f})"
+                )
+        elif trade_edge is not None and trade_edge < min_edge:
+            reasons.append(
+                f"note: edge {trade_edge:+.3f} < min_edge {min_edge:.3f} "
+                f"(enable require_ev_gate to block)"
+            )
+
     # --- aggregate ---
     ok = all(checks.values())
 
@@ -295,7 +418,11 @@ def evaluate(profile: Dict[str, Any], market: MarketSnapshot) -> Decision:
             )
 
     if ok:
-        reasons.insert(0, f"GO: enter {side} @ {entry_price:.2f} stake ${stake_usd:g}")
+        edge_s = "" if trade_edge is None else f" edge {trade_edge:+.3f}"
+        reasons.insert(
+            0,
+            f"GO: enter {side} @ {entry_price:.2f} stake ${stake_usd:g}{edge_s}",
+        )
 
     return Decision(
         ok=ok,
@@ -309,6 +436,8 @@ def evaluate(profile: Dict[str, Any], market: MarketSnapshot) -> Decision:
         reasons=reasons,
         in_target_window=in_window,
         skew_gap=_round(skew_gap),
+        estimated_win_prob=_round(estimated_win_prob),
+        edge=_round(trade_edge),
     )
 
 
@@ -327,6 +456,12 @@ def main() -> int:
     ap.add_argument("--spread", type=float, default=0.0)
     ap.add_argument("--top-ask-notional", type=float, default=0.0)
     ap.add_argument("--quote-age-sec", type=float, default=0.0)
+    ap.add_argument(
+        "--hour-utc",
+        type=int,
+        default=None,
+        help="UTC hour 0-23 for session_filter (optional)",
+    )
     args = ap.parse_args()
 
     cfg = load_config(args.config)
@@ -344,6 +479,7 @@ def main() -> int:
         spread=args.spread,
         top_ask_notional_usd=args.top_ask_notional,
         quote_age_sec=args.quote_age_sec,
+        hour_utc=args.hour_utc,
     )
     decision = evaluate(profile, market)
     print(json.dumps(asdict(decision), indent=2))

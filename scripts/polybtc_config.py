@@ -214,6 +214,40 @@ def validate_config(cfg: Dict[str, Any]) -> List[str]:
                     _num(rc.get("min_edge")) and 0 <= rc["min_edge"] < 1,
                     f"profile '{pname}': risk_controls.min_edge must be in [0, 1)",
                 )
+            if "require_ev_gate" in rc:
+                require(
+                    isinstance(rc.get("require_ev_gate"), bool),
+                    f"profile '{pname}': risk_controls.require_ev_gate must be a boolean",
+                )
+
+        sf = prof.get("session_filter", {})
+        if sf:
+            if "enabled" in sf:
+                require(
+                    isinstance(sf.get("enabled"), bool),
+                    f"profile '{pname}': session_filter.enabled must be a boolean",
+                )
+            if "require_hour" in sf:
+                require(
+                    isinstance(sf.get("require_hour"), bool),
+                    f"profile '{pname}': session_filter.require_hour must be a boolean",
+                )
+            for key in ("allow_hours_utc", "block_hours_utc"):
+                if key not in sf or sf.get(key) is None:
+                    continue
+                hours = sf.get(key)
+                require(
+                    isinstance(hours, list),
+                    f"profile '{pname}': session_filter.{key} must be a list of hours",
+                )
+                if isinstance(hours, list):
+                    for h in hours:
+                        require(
+                            isinstance(h, int)
+                            and not isinstance(h, bool)
+                            and 0 <= h <= 23,
+                            f"profile '{pname}': session_filter.{key} entries must be ints 0-23",
+                        )
 
     return errors
 
@@ -240,6 +274,8 @@ def get_profile(cfg: Dict[str, Any], name: str) -> Dict[str, Any]:
     max_entry = sig.get("max_entry_price")
     min_skew = sig.get("min_skew_gap")
     confirm_polls = int(sig.get("confirm_polls", 1))
+    rc = prof.get("risk_controls", {})
+    sf = dict(prof.get("session_filter", {}) or {})
     return {
         "name": name,
         # signal / sizing
@@ -255,8 +291,10 @@ def get_profile(cfg: Dict[str, Any], name: str) -> Dict[str, Any]:
         "daily_max_loss_pct": float(prof["sizing"]["daily_max_loss_pct"]),
         "max_trades_per_day": int(prof["sizing"]["max_trades_per_day"]),
         "risk_per_trade_pct_equity": float(prof["sizing"].get("risk_per_trade_pct_equity", 0)),
-        "max_consecutive_losses": int(prof.get("risk_controls", {}).get("max_consecutive_losses", 3)),
-        "min_edge": float(prof.get("risk_controls", {}).get("min_edge", 0.0)),
+        "max_consecutive_losses": int(rc.get("max_consecutive_losses", 3)),
+        "min_edge": float(rc.get("min_edge", 0.0)),
+        "require_ev_gate": bool(rc.get("require_ev_gate", False)),
+        "session_filter": sf,
         "hedge": dict(prof.get("hedge", {})),
         "stop_loss": dict(prof.get("stop_loss", {})),
         # shared execution safety

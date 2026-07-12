@@ -557,6 +557,9 @@ def main() -> None:
     report["params"]["confirm_polls"] = confirm_tracker.needed
     report["params"]["min_skew_gap"] = work_profile.get("min_skew_gap")
     report["params"]["btc_move_usd_max"] = work_profile.get("btc_move_usd_max")
+    report["params"]["require_ev_gate"] = work_profile.get("require_ev_gate")
+    report["params"]["min_edge"] = work_profile.get("min_edge")
+    report["params"]["session_filter"] = work_profile.get("session_filter")
 
     while time.time() < deadline:
         try:
@@ -639,6 +642,7 @@ def main() -> None:
                 spread=spread,
                 top_ask_notional_usd=float(top_notional),
                 quote_age_sec=float(snap.get("quote_age_sec") or 0.0),
+                hour_utc=int(now_utc().hour),
             )
             decision = evaluate(work_profile, market)
             confirmed, confirm_streak = confirm_tracker.update(decision)
@@ -655,7 +659,10 @@ def main() -> None:
                     "btc_move_usd": btc_move,
                     "spread": spread,
                     "top_ask_notional": top_notional,
+                    "hour_utc": market.hour_utc,
                     "skew_gap": decision.skew_gap,
+                    "estimated_win_prob": decision.estimated_win_prob,
+                    "edge": decision.edge,
                     "preflight_ok": decision.ok,
                     "preflight_side": decision.side,
                     "preflight_reasons": decision.reasons,

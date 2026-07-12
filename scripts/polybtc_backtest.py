@@ -76,6 +76,23 @@ def _parse_float(row: Dict[str, str], key: str, default: Optional[float] = None)
     return float(value)
 
 
+def _parse_hour_utc(row: Dict[str, str]) -> Optional[int]:
+    raw = row.get("hour_utc", "")
+    if raw is not None and str(raw).strip() != "":
+        return int(float(raw))
+    ts = (row.get("timestamp") or "").strip()
+    if not ts:
+        return None
+    # Accept ISO-like timestamps: 2026-06-28T14:05:00Z
+    try:
+        if "T" in ts:
+            hh = ts.split("T", 1)[1][:2]
+            return int(hh)
+    except (TypeError, ValueError):
+        return None
+    return None
+
+
 def _parse_snapshot(row: Dict[str, str]) -> MarketSnapshot:
     return MarketSnapshot(
         seconds_left=float(row["seconds_left"]),
@@ -85,6 +102,7 @@ def _parse_snapshot(row: Dict[str, str]) -> MarketSnapshot:
         spread=float(row.get("spread", 0) or 0),
         top_ask_notional_usd=float(row.get("top_ask_notional_usd", 0) or 0),
         quote_age_sec=float(row.get("quote_age_sec", 0) or 0),
+        hour_utc=_parse_hour_utc(row),
     )
 
 
