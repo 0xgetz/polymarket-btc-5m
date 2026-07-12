@@ -8,8 +8,25 @@ WORKSPACE_ROOT="$(cd "$SKILL_ROOT/../.." && pwd)"
 REPO_DEFAULT="$WORKSPACE_ROOT/pm-hl-conservative-plus-repo"
 REPO="${POLYBTC_REPO:-$REPO_DEFAULT}"
 RUNNER="${POLYBTC_RUNNER:-$SKILL_ROOT/scripts/test_polybtc_session_exit_sl.py}"
-VENV_PY="${POLYBTC_PY:-$REPO/.venv/bin/python}"
 ENV_FILE="${POLYBTC_ENV_FILE:-$REPO/.env}"
+
+resolve_python() {
+  if [[ -n "${POLYBTC_PY:-}" && -x "${POLYBTC_PY}" ]]; then
+    echo "$POLYBTC_PY"
+    return
+  fi
+  if [[ -x "$REPO/.venv/bin/python" ]]; then
+    echo "$REPO/.venv/bin/python"
+    return
+  fi
+  if [[ -x "$SKILL_ROOT/.venv/bin/python" ]]; then
+    echo "$SKILL_ROOT/.venv/bin/python"
+    return
+  fi
+  command -v python3 || command -v python
+}
+
+VENV_PY="$(resolve_python)"
 
 PIDFILE="$RUNTIME_DIR/polybtc.pid"
 METAFILE="$RUNTIME_DIR/polybtc.meta.json"
@@ -205,11 +222,7 @@ cmd_report() {
     esac
   done
   local py
-  if [[ -x "$VENV_PY" ]]; then
-    py="$VENV_PY"
-  else
-    py="${POLYBTC_PY:-python3}"
-  fi
+  py="$(resolve_python)"
   "$py" "$SKILL_ROOT/scripts/polybtc_report.py" --runtime-dir "$RUNTIME_DIR" --limit "$limit"
 }
 
