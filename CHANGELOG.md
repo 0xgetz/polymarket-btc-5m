@@ -3,6 +3,14 @@
 All notable changes to this project are documented here.
 
 ## [Unreleased]
+### Improved (signal quality)
+- **Direction alignment** (`require_move_aligned`): only enter UP when BTC move is
+  positive and DOWN when negative — blocks counter-impulse thrashing.
+- **`high_confidence` profile**: threshold 0.82–0.92 band, harder impulse ($95),
+  hard entry window, lower size/frequency. Aims for quality, not guaranteed 90% WR.
+- **`max_entry_price`**: skip ultra-rich asks with almost no payout (e.g. 0.97).
+- Preflight also supports per-profile `btc_move_usd_min` and `require_entry_window`.
+
 ### Fixed (audit / live safety)
 - **Wire preflight + capital guardrails into the live runner** before any open order
   (time, BTC impulse via Binance 5m candle, spread, liquidity, threshold side).
@@ -17,8 +25,9 @@ All notable changes to this project are documented here.
 - **Graceful stop**: SIGTERM with wait before SIGKILL; lockfile + open-position warning.
 - **Watcher** defaults to dry-run, uses a lockfile, and stops on guardrail block.
 - Added `scripts/polybtc_live_safety.py` + tests; `requirements-live.txt` for CLOB client.
-- **Readable session-runner source** (`scripts/_psr_impl.py`) is the only
-  implementation; removed zlib/base64 bootstrap parts and obsolete `_psr_part*`.
+- **Plain monolithic session-runner** (`scripts/_psr_impl.py`, ~33KB) is the only
+  implementation; removed zlib/base64 bootstrap (`session_runner.b64.*`),
+  split source parts (`_psr_src_*`), and related repair helpers.
 - examples/SKILL show dry-run-first paths.
 - `polybtc_ctl.sh` / watcher resolve Python more robustly (`POLYBTC_PY`, trading
   venv, skill venv, then `python3`).
