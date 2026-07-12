@@ -43,6 +43,12 @@ profiles:
       threshold_price: 0.70
       # Align side with BTC impulse (blocks UP-after-dump / DOWN-after-pump).
       require_move_aligned: true
+      # Cap blow-off candles that reverse more often near expiry.
+      btc_move_usd_max: 200
+      # Crowd must lean with the trade (chosen_ask - opposite_ask).
+      min_skew_gap: 0.18
+      # Anti-spike: same-side GO must hold across consecutive polls.
+      confirm_polls: 2
     sizing:
       stake_mode: "fixed_or_cap"
       stake_usd: 5
@@ -71,6 +77,9 @@ profiles:
       direction_rule: "follow_stronger_side_over_threshold"
       threshold_price: 0.70
       require_move_aligned: true
+      btc_move_usd_max: 250
+      min_skew_gap: 0.12
+      confirm_polls: 1
     sizing:
       stake_mode: "fixed_or_cap"
       stake_usd: 5
@@ -105,6 +114,9 @@ profiles:
       require_move_aligned: true
       require_entry_window: true
       btc_move_usd_min: 95
+      btc_move_usd_max: 160
+      min_skew_gap: 0.30
+      confirm_polls: 3
     sizing:
       stake_mode: "fixed_or_cap"
       stake_usd: 4
@@ -143,6 +155,9 @@ runner_mapping:
 notes:
   - "Current 5m runner uses threshold/side-strength logic with optional move alignment."
   - "Entry behavior: continuous CLOB ask monitoring; if UP/DOWN >= threshold, enter on stronger side."
-  - "require_move_aligned: only enter UP when btc_move>0 and DOWN when btc_move<0."
+  - "require_move_aligned: only enter UP when btc_move>0 and DOWN when btc_move<0 (signed move)."
+  - "btc_move_usd_max: skip blow-off candles above this absolute USD move."
+  - "min_skew_gap: chosen_ask - opposite_ask must clear this (market skew confirmation)."
+  - "confirm_polls: same-side GO must hold across N consecutive polls before entry."
   - "high_confidence aims for quality over frequency — not a guaranteed 90% win rate."
   - "Buying at price p requires true win-rate > p for positive EV (e.g. 0.90 entry needs >90%)."
