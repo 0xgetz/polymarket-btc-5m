@@ -30,6 +30,9 @@ jobs:
       - name: Python compile check
         run: python -m compileall -q scripts tests
 
+      - name: Ruff lint
+        run: ruff check --output-format=github .
+
       - name: Session runner load check
         run: |
           python -c "
