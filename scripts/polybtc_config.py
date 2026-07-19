@@ -436,8 +436,7 @@ def main() -> int:
             print("Refusing to resolve profile: config is invalid (run --validate).", file=sys.stderr)
             return 1
         resolved = get_profile(cfg, args.profile)
-        if args.show or True:
-            print(json.dumps(resolved, indent=2))
+        print(json.dumps(resolved, indent=2))
     return 0
 
 
