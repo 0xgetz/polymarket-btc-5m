@@ -1,3 +1,8 @@
 # Live trading extras (install inside the Polymarket execution venv)
+# 
+# IMPORTANT: The original py-clob-client (v0.34.6) repository is archived and no longer maintained.
+# Live order execution logic and CLOB client now reside in the external trading stack
+# (e.g. pm-hl-conservative-plus-repo). This file is kept for backward compatibility only.
+# Do NOT rely on py-clob-client for new development; consider py-clob-client-v2 if needed.
 -r requirements.txt
-py-clob-client>=0.34.6
+# py-clob-client>=0.34.6  # archived / legacy - commented to avoid accidental use
