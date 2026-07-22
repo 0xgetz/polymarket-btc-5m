@@ -1,4 +1,5 @@
-version: "3.9"
+# PolyBTC Momentum — optional Docker dev environment
+# Uses Compose Specification (version key optional/deprecated in v2+)
 
 services:
   polybtc:
