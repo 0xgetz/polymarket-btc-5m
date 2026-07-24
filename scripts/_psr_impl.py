@@ -60,23 +60,57 @@ def ts_utc() -> str:
 
 
 def parse_json_objects(text: str) -> list[dict[str, Any]]:
+    """Extract top-level JSON dict objects from mixed text (subprocess stdout/stderr + embedded reports).
+
+    Robust improvements over naive brace counter:
+    - Properly ignores '{' and '}' that appear inside JSON string values (e.g. "reason": "foo {bar}").
+    - Handles escaped quotes (\").
+    - Skips leading/trailing non-JSON text between objects.
+    - Still silently skips unparseable fragments to preserve prior behavior on bad data.
+    - Only collects dicts (not lists or primitives).
+    """
     out: list[dict[str, Any]] = []
-    cur: list[str] = []
-    depth = 0
-    for ch in text:
-        if ch == "{":
-            depth += 1
-        if depth > 0:
-            cur.append(ch)
-        if ch == "}" and depth > 0:
-            depth -= 1
-            if depth == 0:
-                s = "".join(cur)
-                cur = []
-                try:
-                    out.append(json.loads(s))
-                except Exception:
-                    pass
+    i = 0
+    n = len(text)
+    while i < n:
+        # advance to next potential object start
+        while i < n and text[i] != "{":
+            i += 1
+        if i >= n:
+            break
+        start = i
+        depth = 0
+        in_string = False
+        escape = False
+        j = i
+        parsed = False
+        while j < n:
+            ch = text[j]
+            if escape:
+                escape = False
+            elif ch == "\\":
+                escape = True
+            elif ch == '"' and not escape:
+                in_string = not in_string
+            elif not in_string:
+                if ch == "{":
+                    depth += 1
+                elif ch == "}":
+                    depth -= 1
+                    if depth == 0:
+                        candidate = text[start : j + 1]
+                        try:
+                            obj = json.loads(candidate)
+                            if isinstance(obj, dict):
+                                out.append(obj)
+                        except Exception:
+                            pass
+                        i = j + 1
+                        parsed = True
+                        break
+            j += 1
+        if not parsed:
+            i += 1  # advance past unterminated {
     return out
 
 
@@ -208,7 +242,7 @@ def _best_bid_ask(book) -> tuple[Optional[float], Optional[float], float, float]
             ask_sz = s
     bid_notional = (best_bid or 0.0) * bid_sz
     ask_notional = (best_ask or 0.0) * ask_sz
-    return best_bid, best_ask, bid_notional, ask_notional
+    return best_bid, best_ask, bid_notional, ask_sz
 
 
 def _require_clob():
@@ -638,8 +672,7 @@ def main() -> None:
                     if btc_move_1m is None:
                         report["attempts"].append(
                             {
-                                "ts": ts_utc(),
-                                "slug": slug,
+                                "ts": ts_utc(), "slug": slug,
                                 "status": "skip_btc_move_1m_unavailable",
                             }
                         )
@@ -983,10 +1016,7 @@ def main() -> None:
                     max_slippage_from_entry=float(args.max_close_slippage),
                 )
                 force_close_used = {
-                    "type": "FORCE_GTC_LIMIT",
-                    "price": force_px,
-                    "cancel_info": cancel_info,
-                    "best_bid": bb2,
+                    "type": "FORCE_GTC_LIMIT", "price": force_px, "cancel_info": cancel_info, "best_bid": bb2,
                 }
                 out3, objs3 = run_close(
                     args.repo,
