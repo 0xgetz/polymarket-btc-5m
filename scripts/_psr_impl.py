@@ -242,7 +242,7 @@ def _best_bid_ask(book) -> tuple[Optional[float], Optional[float], float, float]
             ask_sz = s
     bid_notional = (best_bid or 0.0) * bid_sz
     ask_notional = (best_ask or 0.0) * ask_sz
-    return best_bid, best_ask, bid_notional, ask_sz
+    return best_bid, best_ask, bid_notional, ask_notional
 
 
 def _require_clob():
