@@ -3,6 +3,28 @@
 All notable changes to this project are documented here.
 
 ## [Unreleased]
+
+### Fixed (audit / CI regression)
+- **Restore canonical core modules**: `polybtc_config.py`, `polybtc_edge.py`,
+  `polybtc_live_safety.py`, and `polybtc_session_runner.py` were overwritten by
+  incompatible stubs in commits `3745527..875a09e`, breaking the config
+  validator (`--validate`), the session-runner load check
+  (`polybtc_session_runner.main`), and the full test suite. Restored the
+  canonical implementations (last green state `12b3d84`) so the config
+  validator, session-runner import, and all **105 tests** pass again.
+- **Full lint cleanup (ruff)**: fixed all **333 ruff violations** under current
+  ruff defaults — modernized type annotations (`Optional[T]` → `T | None`,
+  `Dict`/`List` → `dict`/`list`), sorted imports, context-managed file opens,
+  narrowed exception handlers (targeted `# noqa` only where broad catches are
+  intentional at CLOB/client boundaries), explicit `check=False` on
+  `subprocess.run`, executable bits for shebang scripts, and minor style fixes.
+  `ruff check .` is now clean.
+
+### Changed
+- **Localized README**: polished `README.md` (table of contents, language
+  switcher, consistent section structure) and added `README.id.md`
+  (Bahasa Indonesia) and `README.zh-CN.md` (简体中文) with cross-language links.
+
 ### Added
 - **`micro_10` profile**: ~10 USDT bankroll live test ($1 stake, $1 max notional,
   5 trades/day, 2-loss kill, hedge off). Documented in README + `.env.example`.
