@@ -1,8 +1,8 @@
 <div align="center">
 
-<img src="assets/logo.png" alt="PolyBTC Momentum" width="220"/>
+<img src="assets/logo.png" alt="PolyBTC Momentum" width="200"/>
 
-# PolyBTC Momentum Skill
+# PolyBTC Momentum
 
 **Open-source OpenClaw skill for BTC 5-minute Up/Down momentum trading on Polymarket**
 
@@ -13,39 +13,68 @@
 ![Market](https://img.shields.io/badge/market-Polymarket%20BTC%205m-6f42c1)
 ![Strategy](https://img.shields.io/badge/strategy-momentum--into--close-orange)
 ![License](https://img.shields.io/badge/license-MIT-blue)
-[![Donasi Saweria](https://img.shields.io/badge/%E2%9D%A4%20Donasi-Saweria-ff5e00?style=for-the-badge)](https://saweria.co/0xgetz)
 
-[**Repository**](https://github.com/0xgetz/polymarket-btc-5m)
+[**English**](README.md) · [**Bahasa Indonesia**](README.id.md) · [**简体中文**](README.zh-CN.md)
 
 </div>
+
+---
+
+## Table of Contents
+
+- [Demo](#-demo)
+- [Strategy: Momentum into Close](#-strategy-momentum-into-close)
+- [Trading Profiles](#-trading-profiles)
+- [Realistic Expectations](#-realistic-expectations)
+- [Repository Structure](#-repository-structure)
+- [Getting Started](#-getting-started)
+- [Usage](#-usage)
+- [Live Safety (Post-Audit)](#-live-safety-post-audit)
+- [Tooling & Validation](#-tooling--validation)
+- [Tests & CI](#tests--ci)
+- [Execution Checklist](#-execution-checklist)
+- [Risk Controls](#-risk-controls)
+- [Risk Notice](#-risk-notice)
+- [Support & Contributing](#-support--contributing)
 
 ---
 
 ## 🎬 Demo
 
 ### Live Trading Session (conservative profile)
-<p align="center"><img src="assets/demo-trading.gif" alt="PolyBTC Momentum live trading session" width="820"/></p>
+
+<p align="center">
+  <img src="assets/demo-trading.gif" alt="PolyBTC Momentum live trading session" width="820"/>
+</p>
 
 > Resolve BTC 5m market → confirm impulse + skew + edge → enter with momentum → managed exit before close.
 
 ### Status & PnL Report
-<p align="center"><img src="assets/demo-report.gif" alt="PolyBTC Momentum status and report" width="820"/></p>
+
+<p align="center">
+  <img src="assets/demo-report.gif" alt="PolyBTC Momentum status and report" width="820"/>
+</p>
 
 ---
 
-## Strategy (Momentum into Close)
-This skill is a short-horizon **momentum-into-close** stack (not a reversal system):
+## 🎯 Strategy: Momentum into Close
 
-1. Trade Polymarket BTC 5m Up/Down markets near expiry.
-2. Prefer entries around **~120 seconds left** (tolerance / hard window configurable).
-3. Require a **signed** BTC impulse on the active 5m candle (`close − open`), with optional **1m agreement** (anti-wick).
-4. Follow market skew: stronger CLOB ask over threshold; optional `min_skew_gap` and `max_entry_price`.
-5. Gate on **heuristic edge** (`est_win_prob − entry ≥ min_edge`) and optional UTC **session hours**.
-6. Size with **fixed or edge-scaled** stake (profile caps), with optional **loss-streak soft size-down**.
-7. Manage exit: hard stop on CLOB bid, **hold-to-resolve** when nearly certain, **early-cut** if underwater / BTC reverses near expiry, else time exit.
-8. Optional micro-hedge on extreme near-close skew (e.g. 95/5).
+A short-horizon **momentum-into-close** stack — this is *not* a reversal system:
 
-Profiles live only in `config/polybtc_profiles.yaml`:
+1. **Trade** Polymarket BTC 5m Up/Down markets near expiry.
+2. **Time** entries around **~120 seconds left** (tolerance / hard window configurable).
+3. **Impulse** — require a **signed** BTC move on the active 5m candle (`close − open`), with an optional **1m agreement** (anti-wick).
+4. **Skew** — follow the market: stronger CLOB ask over threshold; optional `min_skew_gap` and `max_entry_price`.
+5. **Edge gate** — require `est_win_prob − entry ≥ min_edge`; optional UTC **session hours**.
+6. **Size** — fixed or **edge-scaled** stake (profile caps), with optional **loss-streak soft size-down**.
+7. **Exit** — hard stop on CLOB bid, **hold-to-resolve** when nearly certain, **early-cut** if underwater or BTC reverses near expiry, else time exit.
+8. **Hedge** — optional micro-hedge on extreme near-close skew (e.g. 95/5).
+
+All profile parameters live **only** in `config/polybtc_profiles.yaml`.
+
+---
+
+## 📊 Trading Profiles
 
 | Profile | Intent |
 |---|---|
@@ -56,7 +85,8 @@ Profiles live only in `config/polybtc_profiles.yaml`:
 | `observe` | **Research only** — looser gates for `polybtc_live_logger` / dry-run; **not for live money** |
 
 ### Micro test with ~10 USDT
-Use profile `micro_10` and set equity to your bankroll so daily loss % is meaningful:
+
+Use profile `micro_10` and set equity to your bankroll so the daily loss % is meaningful:
 
 ```bash
 # 1) Dry-run first (no orders)
@@ -66,7 +96,7 @@ python scripts/test_polybtc_session_exit_sl.py --profile micro_10
 # or via ctl:
 scripts/polybtc_ctl.sh start --profile micro_10
 
-# 2) Only after dry-run looks sane — REAL $1 orders (wallet must hold ~10 USDT):
+# 2) Only after the dry-run looks sane — REAL $1 orders (wallet must hold ~10 USDT):
 export POLYBTC_EQUITY=10
 scripts/polybtc_ctl.sh start --profile micro_10 --live
 # equivalent:
@@ -75,12 +105,11 @@ python scripts/test_polybtc_session_exit_sl.py --profile micro_10 --equity 10 --
 
 `micro_10` caps: stake **$1**, max notional **$1**, max **5** trades/day, stop after **2** consecutive losses, daily max loss **20% of equity** (≈$2 if equity=10). Hedge disabled. You can still lose the full stack over multiple days.
 
-## 📊 Realistic Expectations — No Guaranteed Profit
+---
 
-This is a high-variance speculative strategy. **No setup can guarantee profit**,
-and anyone promising a "99% win rate" is misleading you. The payoff is
-asymmetric — you buy a side at price `p`, so your **break-even win-rate equals
-`p`**: you must be right *more* than `p`% of the time just to avoid losing money.
+## 📈 Realistic Expectations
+
+> **No guaranteed profit.** This is a high-variance speculative strategy. **No setup can guarantee profit**, and anyone promising a "99% win rate" is misleading you. The payoff is asymmetric — you buy a side at price `p`, so your **break-even win-rate equals `p`**: you must be right *more* than `p`% of the time just to avoid losing money.
 
 | Entry price | Win payoff ($5 stake) | Loss | Break-even win-rate |
 |---|---|---|---|
@@ -88,49 +117,61 @@ asymmetric — you buy a side at price `p`, so your **break-even win-rate equals
 | 0.90 | +$0.56 | −$5.00 | **> 90%** |
 | 0.95 | +$0.26 | −$5.00 | **> 95%** |
 
-At 0.71 a single loss erases ~2.4 wins. The realistic objective is a **measured,
-positive edge with strict capital protection** — not guaranteed wins. Use the
-analytics, edge, exit, and fill tools (see [Tooling & Validation](#-tooling--validation))
-to verify real expectancy before sizing up.
+At 0.71 a single loss erases ~2.4 wins. The realistic objective is a **measured, positive edge with strict capital protection** — not guaranteed wins. Use the analytics, edge, exit, and fill tools (see [Tooling & Validation](#-tooling--validation)) to verify real expectancy before sizing up.
 
-## Repository Structure
-- `SKILL.md` — skill definition and operating rules
-- `CONTOUR.md` — canonical execution path + post-audit safety notes
-- `BACKTESTING.md` — CSV historical backtest + calibrator guide
-- `config/polybtc_profiles.yaml` — single source of truth for profiles / risk
-- `scripts/` — runners, preflight, analytics, live logger, reports
-  (`_psr_impl.py` is the live-session implementation)
-- `examples/` — command examples + sample backtest CSV
-- `assets/` — logo and demo GIFs
-- `tests/` — pytest (config, preflight, edge, guardrails, analytics, dry-run,
-  summary, live safety, backtest, calibrate, exit/fill reports, logger CSV)
-- `.github/workflows/` — CI (lint, compile, config validation, tests)
+---
 
-## Deploy / Run
+## 🗂 Repository Structure
+
+| Path | Purpose |
+|---|---|
+| `SKILL.md` | Skill definition and operating rules |
+| `CONTOUR.md` | Canonical execution path + post-audit safety notes |
+| `BACKTESTING.md` | CSV historical backtest + calibrator guide |
+| `config/polybtc_profiles.yaml` | Single source of truth for profiles / risk |
+| `scripts/` | Runners, preflight, analytics, live logger, reports (`_psr_impl.py` is the live-session implementation) |
+| `examples/` | Command examples + sample backtest CSV |
+| `assets/` | Logo and demo GIFs |
+| `tests/` | pytest (config, preflight, edge, guardrails, analytics, dry-run, summary, live safety, backtest, calibrate, exit/fill reports, logger CSV) |
+| `.github/workflows/` | CI (lint, compile, config validation, tests) |
+
+---
+
+## 🚀 Getting Started
+
 ### Prerequisites
+
 - OpenClaw environment (optional for pure Python tooling)
 - Polymarket execution stack for **real orders** (e.g. `pm-hl-conservative-plus-repo`)
-- Python 3.12+ venv: `pip install -r requirements.txt` (and `requirements-live.txt` for CLOB client)
+- Python 3.12+ venv: `pip install -r requirements.txt` (and `requirements-live.txt` for the CLOB client)
 - API credentials only outside this repo (via env / external `.env`)
 
 ### Quick Start
+
 ```bash
 git clone https://github.com/0xgetz/polymarket-btc-5m.git
 cd polymarket-btc-5m
 pip install -r requirements.txt
 ```
 
-Read:
+Then read:
+
 - `SKILL.md`
 - `config/polybtc_profiles.yaml`
 
-**Observe-only** (no orders — good first step):
+---
+
+## 💻 Usage
+
+### Observe-only (no orders — a good first step)
+
 ```bash
 python scripts/polybtc_live_logger.py --profile observe --minutes 60 --poll-sec 5
 # JSONL + CSV land in ./runtime/
 ```
 
-Dry-run session runner (default — no orders):
+### Dry-run session runner (default — no orders)
+
 ```bash
 python scripts/test_polybtc_session_exit_sl.py --profile conservative
 # or:
@@ -138,13 +179,15 @@ scripts/polybtc_ctl.sh start --profile conservative
 scripts/polybtc_ctl.sh start --profile high_confidence   # selective
 ```
 
-Live only after validation (explicit flag required):
+### Live — only after validation (explicit flag required)
+
 ```bash
 python scripts/test_polybtc_session_exit_sl.py --profile conservative --execute
 scripts/polybtc_ctl.sh start --profile conservative --live
 ```
 
-Unified skill control:
+### Unified skill control
+
 ```bash
 scripts/polybtc_ctl.sh start --profile conservative          # dry-run
 scripts/polybtc_ctl.sh start --profile conservative --live   # real orders
@@ -153,7 +196,17 @@ scripts/polybtc_ctl.sh report --limit 20
 scripts/polybtc_ctl.sh stop   # SIGTERM first; may leave open positions if killed mid-trade
 ```
 
-### Live safety (post-audit)
+### Optional Docker
+
+```bash
+scripts/polybtc_docker.sh up
+scripts/polybtc_docker.sh status
+scripts/polybtc_docker.sh down
+```
+
+---
+
+## 🛡 Live Safety (Post-Audit)
 
 Defaults keep real money hard to enable by accident:
 
@@ -173,22 +226,19 @@ Defaults keep real money hard to enable by accident:
 Helpers: `scripts/polybtc_live_safety.py` (unit-tested). Live CLOB deps: `requirements-live.txt`.
 
 Runtime isolation:
+
 - skill runtime dir: `./runtime`
 - auth/env source (default): `<your-workspace>/pm-hl-conservative-plus-repo/.env`
 - overrides: `POLYBTC_REPO`, `POLYBTC_ENV_FILE`, `POLYBTC_RUNNER`, `POLYBTC_RUNTIME_DIR`, `POLYBTC_PY`
 
-Optional Docker:
-```bash
-scripts/polybtc_docker.sh up
-scripts/polybtc_docker.sh status
-scripts/polybtc_docker.sh down
-```
+---
 
 ## 🧪 Tooling & Validation
 
 Most helpers are pure / deterministic (or public-API observe-only). Prefer them before live size-up.
 
 ### Config validator
+
 ```bash
 pip install -r requirements.txt
 python scripts/polybtc_config.py --validate
@@ -197,6 +247,7 @@ python scripts/polybtc_config.py --profile observe --show
 ```
 
 ### Preflight gate
+
 GO / NO-GO engine: side, stake (edge + streak scaled), stop, hedge plan, checks, edge.
 
 ```bash
@@ -236,20 +287,24 @@ Example GO (shape; values depend on profile):
 ```
 
 ### Live observe logger + CSV export (no orders)
+
 ```bash
 python scripts/polybtc_live_logger.py --profile observe --minutes 60 --poll-sec 5
 python scripts/polybtc_live_logger.py --export-jsonl runtime/polybtc_live_obs_....jsonl
 ```
 
 ### Accuracy calibrator (CSV grid search)
+
 ```bash
 python scripts/polybtc_calibrate.py \
   --csv examples/polybtc_backtest_sample_data.csv \
   --profile conservative --top 10 --min-trades 2
 ```
+
 Details: `BACKTESTING.md`.
 
 ### Backtest (CSV replay through preflight)
+
 ```bash
 python scripts/polybtc_backtest.py \
   --csv examples/polybtc_backtest_sample_data.csv \
@@ -257,6 +312,7 @@ python scripts/polybtc_backtest.py \
 ```
 
 ### Reports after paper/live
+
 ```bash
 python scripts/polybtc_analytics.py --runtime-dir ./runtime --limit 200
 python scripts/polybtc_exit_report.py --runtime-dir ./runtime --limit 200
@@ -265,6 +321,7 @@ python scripts/polybtc_daily_summary.py --profile conservative --equity 200
 ```
 
 ### Guardrails / edge math / dry-run
+
 ```bash
 python scripts/polybtc_guardrails.py --profile conservative \
   --equity 200 --pnls=-5,-5,-5 --entry 0.71 --win-prob 0.80
@@ -277,13 +334,19 @@ python scripts/polybtc_dryrun.py --profile conservative \
 ```
 
 ### Tests & CI
+
 ```bash
 pip install -r requirements-dev.txt
 pytest -q
 ```
+
 CI runs bash/Python syntax checks, config validation, and the full test suite.
 
-## Execution Checklist (Before Live Trade)
+---
+
+## ✅ Execution Checklist
+
+> Before live trade.
 
 1. **Market validity** — active BTC 5m slot, not already closed.
 2. **Time window** — enough `min_entry_seconds_left`; prefer ~120s target window.
@@ -298,7 +361,10 @@ CI runs bash/Python syntax checks, config validation, and the full test suite.
 11. **Exit policy** — stop-loss, hold-to-resolve, early-cut, `exit_before_sec`.
 12. **Mode** — dry-run / observe logger first; `--execute` only after validation.
 
-## Risk Controls Template
+---
+
+## 🧰 Risk Controls
+
 Defaults live in `config/polybtc_profiles.yaml` and are enforced on the live path:
 
 - Per-trade stake base + **edge-scaled** size + **loss-streak soft size**
@@ -313,33 +379,41 @@ Defaults live in `config/polybtc_profiles.yaml` and are enforced on the live pat
 - Session hour allow/block (UTC)
 - Graceful process stop: SIGTERM → wait → SIGKILL
 
-## 💖 Dukung Proyek Ini
+---
 
-Jika skill ini bermanfaat untuk trading atau riset Anda, dukung pengembangannya:
+## ⚠️ Risk Notice
 
-<div align="center">
+This repository is **educational/operational infrastructure, not financial advice**.
+Use your own risk limits, daily loss caps, and capital controls.
 
-[![Donasi di Saweria](https://img.shields.io/badge/%E2%9D%A4%20Donasi%20di%20Saweria-0xgetz-ff5e00?style=for-the-badge&logo=buymeacoffee&logoColor=white)](https://saweria.co/0xgetz)
+**`observe` is for research logging only — do not enable live money on it.**
 
-</div>
+---
 
-Donasi membantu untuk:
-- 🖥️ Biaya server & data feed untuk pengujian strategi
-- ✨ Pengembangan fitur baru (filter impulse, multi-market, dashboard)
-- 📚 Dokumentasi & contoh penggunaan yang lebih lengkap
-- 🐛 Perbaikan bug dan pemeliharaan rutin
+## 💖 Support & Contributing
+
+If this skill is useful for your trading or research, you can support its development:
+
+<p align="center">
+  <a href="https://saweria.co/0xgetz">
+    <img src="https://img.shields.io/badge/❤️%20Donate-Saweria-ff5e00?style=for-the-badge" alt="Donate via Saweria"/>
+  </a>
+</p>
+
+Donations help with:
+
+- 🖥️ Server & data-feed costs for strategy testing
+- ✨ New features (impulse filters, multi-market, dashboard)
+- 📚 Better documentation & examples
+- 🐛 Bug fixes and routine maintenance
 
 🔗 **https://saweria.co/0xgetz**
 
-## Risk Notice
-This repository is educational/operational infrastructure, not financial advice.
-Use your own risk limits, daily loss caps, and capital controls.
-**`observe` is for research logging only — do not enable live money on it.**
+### Contributing
 
-## Contributing
 - Fork the repository
 - Create a feature branch
-- Commit changes
-- Open a PR to `main`
+- Commit your changes
+- Open a pull request to `main`
 
 PRs are welcome.
