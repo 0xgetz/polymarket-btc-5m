@@ -17,12 +17,11 @@ import argparse
 import glob
 import json
 import os
-import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 
-def _normalise_reason(raw: Optional[str]) -> str:
+def _normalise_reason(raw: str | None) -> str:
     if not raw:
         return "unknown"
     r = str(raw).strip()
@@ -42,7 +41,7 @@ def _normalise_reason(raw: Optional[str]) -> str:
     return r
 
 
-def compute_exit_attribution(trades: List[Dict[str, Any]]) -> Dict[str, Any]:
+def compute_exit_attribution(trades: list[dict[str, Any]]) -> dict[str, Any]:
     """Aggregate PnL by close_reason family.
 
     Each trade: ``pnl`` (required), optional ``close_reason``, ``side``.
@@ -55,7 +54,7 @@ def compute_exit_attribution(trades: List[Dict[str, Any]]) -> Dict[str, Any]:
             "note": "no settled trades with PnL found",
         }
 
-    by: Dict[str, Dict[str, Any]] = {}
+    by: dict[str, dict[str, Any]] = {}
     for t in settled:
         reason = _normalise_reason(t.get("close_reason"))
         b = by.setdefault(
@@ -101,9 +100,10 @@ def compute_exit_attribution(trades: List[Dict[str, Any]]) -> Dict[str, Any]:
     }
 
 
-def _load_tail_json(path: str) -> Optional[Dict[str, Any]]:
+def _load_tail_json(path: str) -> dict[str, Any] | None:
     try:
-        txt = open(path, "r", encoding="utf-8", errors="ignore").read()
+        with open(path, "r", encoding="utf-8", errors="ignore") as fh:
+            txt = fh.read()
     except OSError:
         return None
     i = txt.rfind("\n{")
@@ -118,12 +118,12 @@ def _load_tail_json(path: str) -> Optional[Dict[str, Any]]:
         return None
 
 
-def load_exit_trades(runtime_dir: str, limit: int = 500) -> List[Dict[str, Any]]:
+def load_exit_trades(runtime_dir: str, limit: int = 500) -> list[dict[str, Any]]:
     files = sorted(
         set(glob.glob(os.path.join(runtime_dir, "polybtc_*.log"))),
         key=lambda p: os.path.getmtime(p),
     )[-limit:]
-    trades: List[Dict[str, Any]] = []
+    trades: list[dict[str, Any]] = []
     for f in files:
         obj = _load_tail_json(f)
         if not obj:

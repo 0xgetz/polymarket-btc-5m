@@ -14,9 +14,8 @@ import argparse
 import glob
 import json
 import os
-import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 
 def slippage_bps(signal_price: float, fill_price: float) -> float:
@@ -28,7 +27,7 @@ def slippage_bps(signal_price: float, fill_price: float) -> float:
     return (fill - sig) / sig * 10000.0
 
 
-def compute_fill_stats(fills: List[Dict[str, Any]]) -> Dict[str, Any]:
+def compute_fill_stats(fills: list[dict[str, Any]]) -> dict[str, Any]:
     """Aggregate fill quality. Each fill needs signal_price, fill_price; optional side/pnl."""
     rows = []
     for f in fills:
@@ -60,7 +59,7 @@ def compute_fill_stats(fills: List[Dict[str, Any]]) -> Dict[str, Any]:
     bps_sorted = sorted(bps_list)
     mid = len(bps_sorted) // 2
 
-    by_side: Dict[str, Dict[str, Any]] = {}
+    by_side: dict[str, dict[str, Any]] = {}
     for r in rows:
         side = r.get("side") or "unknown"
         b = by_side.setdefault(side, {"n": 0, "sum_bps": 0.0})
@@ -84,9 +83,10 @@ def compute_fill_stats(fills: List[Dict[str, Any]]) -> Dict[str, Any]:
     }
 
 
-def _load_tail_json(path: str) -> Optional[Dict[str, Any]]:
+def _load_tail_json(path: str) -> dict[str, Any] | None:
     try:
-        txt = open(path, "r", encoding="utf-8", errors="ignore").read()
+        with open(path, "r", encoding="utf-8", errors="ignore") as fh:
+            txt = fh.read()
     except OSError:
         return None
     i = txt.rfind("\n{")
@@ -101,13 +101,13 @@ def _load_tail_json(path: str) -> Optional[Dict[str, Any]]:
         return None
 
 
-def load_fills_from_logs(runtime_dir: str, limit: int = 500) -> List[Dict[str, Any]]:
+def load_fills_from_logs(runtime_dir: str, limit: int = 500) -> list[dict[str, Any]]:
     """Extract signal vs fill prices from session logs."""
     files = sorted(
         set(glob.glob(os.path.join(runtime_dir, "polybtc_*.log"))),
         key=lambda p: os.path.getmtime(p),
     )[-limit:]
-    fills: List[Dict[str, Any]] = []
+    fills: list[dict[str, Any]] = []
     for f in files:
         obj = _load_tail_json(f)
         if not obj:

@@ -23,9 +23,9 @@ import argparse
 import datetime as dt
 import json
 import sys
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 
 def _today() -> str:
@@ -40,11 +40,11 @@ class GuardState:
     consecutive_losses: int = 0
 
 
-def new_state(day: Optional[str] = None) -> GuardState:
+def new_state(day: str | None = None) -> GuardState:
     return GuardState(day=day or _today())
 
 
-def register_result(state: GuardState, pnl: float, day: Optional[str] = None) -> GuardState:
+def register_result(state: GuardState, pnl: float, day: str | None = None) -> GuardState:
     """Fold a settled trade's PnL into the guard state (resets counters on a new day)."""
     day = day or _today()
     if day != state.day:
@@ -59,20 +59,20 @@ def register_result(state: GuardState, pnl: float, day: Optional[str] = None) ->
     return state
 
 
-def daily_loss_cap_usd(profile: Dict[str, Any], account_equity: float) -> float:
+def daily_loss_cap_usd(profile: dict[str, Any], account_equity: float) -> float:
     """Daily max loss in $ derived from the profile's percentage and account equity."""
     return abs(account_equity) * float(profile["daily_max_loss_pct"]) / 100.0
 
 
 def check_guards(
-    profile: Dict[str, Any],
+    profile: dict[str, Any],
     state: GuardState,
-    account_equity: Optional[float] = None,
-    loss_cap_usd: Optional[float] = None,
-) -> Dict[str, Any]:
+    account_equity: float | None = None,
+    loss_cap_usd: float | None = None,
+) -> dict[str, Any]:
     """Return {'allowed': bool, 'checks': {...}, 'reasons': [...]} for the next entry."""
-    checks: Dict[str, bool] = {}
-    reasons: List[str] = []
+    checks: dict[str, bool] = {}
+    reasons: list[str] = []
 
     max_streak = int(profile["max_consecutive_losses"])
     ok_streak = state.consecutive_losses < max_streak
@@ -106,7 +106,7 @@ def check_guards(
             "state": asdict(state)}
 
 
-def ev_gate(profile: Dict[str, Any], entry_price: float, est_win_prob: float) -> Dict[str, Any]:
+def ev_gate(profile: dict[str, Any], entry_price: float, est_win_prob: float) -> dict[str, Any]:
     """Block entries without a positive edge buffer (est_win_prob >= price + min_edge)."""
     min_edge = float(profile.get("min_edge", 0.0))
     required = entry_price + min_edge
@@ -129,7 +129,7 @@ def ev_gate(profile: Dict[str, Any], entry_price: float, est_win_prob: float) ->
 
 def main() -> int:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from polybtc_config import load_config, validate_config, get_profile  # noqa: E402
+    from polybtc_config import get_profile, load_config, validate_config
 
     ap = argparse.ArgumentParser(description="PolyBTC Momentum guardrails")
     ap.add_argument("--config", default=None)
@@ -154,7 +154,7 @@ def main() -> int:
             if tok:
                 state = register_result(state, float(tok))
 
-    out: Dict[str, Any] = {"guards": check_guards(profile, state, account_equity=args.equity)}
+    out: dict[str, Any] = {"guards": check_guards(profile, state, account_equity=args.equity)}
     if args.entry is not None and args.win_prob is not None:
         out["ev_gate"] = ev_gate(profile, args.entry, args.win_prob)
 

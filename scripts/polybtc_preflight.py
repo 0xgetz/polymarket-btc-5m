@@ -26,42 +26,42 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 
 @dataclass
 class MarketSnapshot:
     seconds_left: float          # seconds remaining in the active 5m slot
     btc_move_usd: float          # signed BTC move in the active interval (close - open, $)
-    up_ask: Optional[float]      # CLOB best ask for UP token (0..1), None if unavailable
-    dn_ask: Optional[float]      # CLOB best ask for DOWN token (0..1), None if unavailable
+    up_ask: float | None      # CLOB best ask for UP token (0..1), None if unavailable
+    dn_ask: float | None      # CLOB best ask for DOWN token (0..1), None if unavailable
     spread: float                # top-of-book spread of the picked side
     top_ask_notional_usd: float  # notional available at top ask ($)
     quote_age_sec: float = 0.0   # age of the latest quote (staleness)
-    hour_utc: Optional[int] = None  # 0-23 for session filter; None = unknown
+    hour_utc: int | None = None  # 0-23 for session filter; None = unknown
     # Signed 1m BTC move (close - open) for anti-wick entry confirmation.
-    btc_move_1m_usd: Optional[float] = None
+    btc_move_1m_usd: float | None = None
 
 
 @dataclass
 class Decision:
     ok: bool                                   # True only if all hard checks pass
-    side: Optional[str]                        # 'UP' | 'DOWN' | None
-    entry_price: Optional[float]               # ask used for entry
-    stake_usd: Optional[float]                 # recommended stake (capped / edge-scaled)
-    max_notional_usd: Optional[float]          # profile notional cap
-    stop_loss_price: Optional[float]           # computed stop price (if enabled)
-    hedge: Optional[Dict[str, Any]]            # hedge plan or None
-    checks: Dict[str, bool] = field(default_factory=dict)   # per-check pass/fail
-    reasons: List[str] = field(default_factory=list)        # human-readable notes
+    side: str | None                        # 'UP' | 'DOWN' | None
+    entry_price: float | None               # ask used for entry
+    stake_usd: float | None                 # recommended stake (capped / edge-scaled)
+    max_notional_usd: float | None          # profile notional cap
+    stop_loss_price: float | None           # computed stop price (if enabled)
+    hedge: dict[str, Any] | None            # hedge plan or None
+    checks: dict[str, bool] = field(default_factory=dict)   # per-check pass/fail
+    reasons: list[str] = field(default_factory=list)        # human-readable notes
     in_target_window: bool = False             # soft: within ideal ~target window
-    skew_gap: Optional[float] = None           # chosen_ask - opposite_ask when available
-    estimated_win_prob: Optional[float] = None  # heuristic P(win)
-    edge: Optional[float] = None               # estimated_win_prob - entry_price
-    stake_scale: Optional[float] = None        # edge-scaled multiplier applied to base stake
-    streak_scale: Optional[float] = None       # loss-streak soft size multiplier
+    skew_gap: float | None = None           # chosen_ask - opposite_ask when available
+    estimated_win_prob: float | None = None  # heuristic P(win)
+    edge: float | None = None               # estimated_win_prob - entry_price
+    stake_scale: float | None = None        # edge-scaled multiplier applied to base stake
+    streak_scale: float | None = None       # loss-streak soft size multiplier
 
 
 @dataclass
@@ -73,10 +73,10 @@ class ConfirmTracker:
     """
 
     needed: int = 1
-    side: Optional[str] = None
+    side: str | None = None
     count: int = 0
 
-    def update(self, decision: "Decision") -> Tuple[bool, int]:
+    def update(self, decision: Decision) -> tuple[bool, int]:
         """Feed one preflight result. Returns ``(confirmed, streak)``."""
         need = max(1, int(self.needed))
         if not decision.ok or decision.side is None:
@@ -95,7 +95,7 @@ class ConfirmTracker:
         self.count = 0
 
 
-def _round(x: Optional[float], n: int = 4) -> Optional[float]:
+def _round(x: float | None, n: int = 4) -> float | None:
     return None if x is None else round(float(x), n)
 
 
@@ -108,7 +108,7 @@ def estimate_win_prob(
     entry_price: float,
     abs_move_usd: float,
     move_min_usd: float,
-    skew_gap: Optional[float],
+    skew_gap: float | None,
     in_target_window: bool,
     seconds_left: float,
 ) -> float:
@@ -147,11 +147,11 @@ def scale_stake_usd(
     *,
     base_stake: float,
     max_notional: float,
-    edge: Optional[float],
+    edge: float | None,
     min_edge: float,
-    sizing: Optional[Dict[str, Any]] = None,
+    sizing: dict[str, Any] | None = None,
     consecutive_losses: int = 0,
-) -> Tuple[float, float, float]:
+) -> tuple[float, float, float]:
     """Edge-scaled + loss-streak soft sizing, capped by max_notional.
 
     Returns ``(stake_usd, edge_scale, streak_scale)``.
@@ -195,7 +195,7 @@ def scale_stake_usd(
     return round(stake, 4), round(edge_scale, 4), round(streak_scale, 4)
 
 
-def loss_streak_scale(*, consecutive_losses: int, policy: Optional[Dict[str, Any]] = None) -> float:
+def loss_streak_scale(*, consecutive_losses: int, policy: dict[str, Any] | None = None) -> float:
     """Soft size multiplier after consecutive losses (before hard kill switch).
 
     After ``after_losses`` losses in a row, multiply by ``scale_per_loss`` for each
@@ -219,9 +219,9 @@ def loss_streak_scale(*, consecutive_losses: int, policy: Optional[Dict[str, Any
 
 
 def session_hour_allowed(
-    profile: Dict[str, Any],
-    hour_utc: Optional[int],
-) -> Tuple[bool, str]:
+    profile: dict[str, Any],
+    hour_utc: int | None,
+) -> tuple[bool, str]:
     """Return (allowed, reason_if_blocked) for the UTC session filter."""
     sf = profile.get("session_filter") or {}
     if not sf.get("enabled"):
@@ -254,12 +254,12 @@ def session_hour_allowed(
 
 
 def compute_hedge(
-    profile: Dict[str, Any],
-    side: Optional[str],
-    entry_price: Optional[float],
+    profile: dict[str, Any],
+    side: str | None,
+    entry_price: float | None,
     seconds_left: float,
-    stake_usd: Optional[float] = None,
-) -> Optional[Dict[str, Any]]:
+    stake_usd: float | None = None,
+) -> dict[str, Any] | None:
     """Decide an optional micro-hedge for the near-close window.
 
     The hedge is a last-seconds tail-risk reducer evaluated *independently* of
@@ -288,7 +288,7 @@ def compute_hedge(
 
 
 def evaluate(
-    profile: Dict[str, Any],
+    profile: dict[str, Any],
     market: MarketSnapshot,
     *,
     consecutive_losses: int = 0,
@@ -298,8 +298,8 @@ def evaluate(
     ``consecutive_losses`` soft-scales stake when ``loss_streak_scale`` is enabled
     (does not replace the hard kill switch in guardrails).
     """
-    checks: Dict[str, bool] = {}
-    reasons: List[str] = []
+    checks: dict[str, bool] = {}
+    reasons: list[str] = []
 
     # 0) Session hour filter (UTC) — skip historically weak windows when configured.
     ok_session, session_reason = session_hour_allowed(profile, market.hour_utc)
@@ -391,8 +391,8 @@ def evaluate(
                 f"({', '.join(f'{s}@{p:.2f}' for s, p in candidates)})"
             )
         candidates = capped
-    side: Optional[str] = None
-    entry_price: Optional[float] = None
+    side: str | None = None
+    entry_price: float | None = None
     if candidates:
         side, entry_price = max(candidates, key=lambda c: c[1])
     ok_side = side is not None
@@ -408,9 +408,7 @@ def evaluate(
     require_aligned = bool(profile.get("require_move_aligned", False))
     if require_aligned:
         aligned = False
-        if side == "UP" and market.btc_move_usd > 0:
-            aligned = True
-        elif side == "DOWN" and market.btc_move_usd < 0:
+        if side == "UP" and market.btc_move_usd > 0 or side == "DOWN" and market.btc_move_usd < 0:
             aligned = True
         checks["move_aligned"] = aligned if side is not None else False
         if side is not None and not aligned:
@@ -437,9 +435,7 @@ def evaluate(
         elif m1 is None:
             ok_1m = False
             reasons.append("btc_move_1m unavailable (require_1m_aligned)")
-        elif side == "UP" and float(m1) > 0:
-            ok_1m = True
-        elif side == "DOWN" and float(m1) < 0:
+        elif side == "UP" and float(m1) > 0 or side == "DOWN" and float(m1) < 0:
             ok_1m = True
         else:
             reasons.append(
@@ -449,7 +445,7 @@ def evaluate(
 
     # 9) Skew confirmation: chosen side must dominate the opposite ask by
     #    at least min_skew_gap (crowd + book already lean hard with momentum).
-    skew_gap: Optional[float] = None
+    skew_gap: float | None = None
     min_skew = profile.get("min_skew_gap")
     if min_skew is not None and float(min_skew) > 0:
         min_skew_f = float(min_skew)
@@ -475,8 +471,8 @@ def evaluate(
             skew_gap = float(market.dn_ask) - float(market.up_ask)
 
     # 10) Heuristic win-prob + EV gate: only buy when estimated edge clears min_edge.
-    estimated_win_prob: Optional[float] = None
-    trade_edge: Optional[float] = None
+    estimated_win_prob: float | None = None
+    trade_edge: float | None = None
     require_ev = bool(profile.get("require_ev_gate", False))
     min_edge = float(profile.get("min_edge", 0.0) or 0.0)
     if side is not None and entry_price is not None:
@@ -506,12 +502,12 @@ def evaluate(
     # --- aggregate ---
     ok = all(checks.values())
 
-    stake_usd: Optional[float] = None
-    max_notional: Optional[float] = None
-    stop_price: Optional[float] = None
-    hedge_plan: Optional[Dict[str, Any]] = None
-    stake_scale: Optional[float] = None
-    streak_scale: Optional[float] = None
+    stake_usd: float | None = None
+    max_notional: float | None = None
+    stop_price: float | None = None
+    hedge_plan: dict[str, Any] | None = None
+    stake_scale: float | None = None
+    streak_scale: float | None = None
 
     if ok:
         max_notional = profile["max_notional_usd"]
@@ -574,7 +570,7 @@ def evaluate(
 def main() -> int:
     # Local import so the engine stays importable even without pyyaml present.
     sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from polybtc_config import load_config, validate_config, get_profile  # noqa: E402
+    from polybtc_config import get_profile, load_config, validate_config
 
     ap = argparse.ArgumentParser(description="PolyBTC Momentum preflight gate")
     ap.add_argument("--config", default=None)

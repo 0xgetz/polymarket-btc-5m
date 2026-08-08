@@ -45,12 +45,12 @@ def main():
             os.kill(pid, 0)
             print("NO_REPORT:running")
             return
-        except Exception:
+        except (OSError, ValueError):
             pass
 
     try:
         obj = parse_tail_json(latest)
-    except Exception as e:
+    except (OSError, ValueError, TypeError) as e:
         print(f"NO_REPORT:parse_error:{e}")
         return
 

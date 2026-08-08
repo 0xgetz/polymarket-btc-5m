@@ -1,6 +1,5 @@
 """Tests for trade analytics / log backtest stats."""
 import pytest
-
 from polybtc_analytics import compute_stats
 
 

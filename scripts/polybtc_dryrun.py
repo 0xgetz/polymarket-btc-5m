@@ -29,12 +29,13 @@ import json
 import os
 import sys
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
+
+from polybtc_edge import win_payoff
 
 # Sibling imports work both when run as a script (scripts/ on sys.path[0])
 # and under pytest (tests/conftest.py adds scripts/ to sys.path).
 from polybtc_preflight import MarketSnapshot, evaluate
-from polybtc_edge import win_payoff
 
 
 def _now_utc() -> dt.datetime:
@@ -46,12 +47,12 @@ def _iso(ts: dt.datetime) -> str:
 
 
 def simulate_trade(
-    profile: Dict[str, Any],
+    profile: dict[str, Any],
     market: MarketSnapshot,
     outcome: str,
-    market_slug: Optional[str] = None,
-    ts: Optional[dt.datetime] = None,
-) -> Dict[str, Any]:
+    market_slug: str | None = None,
+    ts: dt.datetime | None = None,
+) -> dict[str, Any]:
     """Run the preflight gate and, if it's a GO, simulate the trade outcome.
 
     ``outcome`` is either 'win' / 'loss', or the resolved winning side
@@ -106,13 +107,13 @@ def simulate_trade(
     return base
 
 
-def paper_log_path(runtime_dir: str, ts: Optional[dt.datetime] = None) -> str:
+def paper_log_path(runtime_dir: str, ts: dt.datetime | None = None) -> str:
     ts = ts or _now_utc()
     stamp = ts.astimezone(dt.timezone.utc).strftime("%Y%m%dT%H%M%S%f")
     return os.path.join(runtime_dir, f"polybtc_dryrun_{stamp}.log")
 
 
-def write_paper_log(record: Dict[str, Any], runtime_dir: str, ts: Optional[dt.datetime] = None) -> str:
+def write_paper_log(record: dict[str, Any], runtime_dir: str, ts: dt.datetime | None = None) -> str:
     """Write a paper-trade record to an analytics-compatible .log file."""
     os.makedirs(runtime_dir, exist_ok=True)
     path = paper_log_path(runtime_dir, ts)
@@ -138,7 +139,7 @@ def default_runtime_dir() -> str:
 def main() -> int:
     # Use the validated config for the resolved profile.
     sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from polybtc_config import load_config, validate_config, get_profile  # noqa: E402
+    from polybtc_config import get_profile, load_config, validate_config
 
     ap = argparse.ArgumentParser(description="PolyBTC Momentum dry-run (paper) recorder")
     ap.add_argument("--config", default=None)

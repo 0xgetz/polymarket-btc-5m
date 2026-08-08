@@ -23,10 +23,10 @@ import json
 import os
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 
-def compute_stats(trades: List[Dict[str, Any]]) -> Dict[str, Any]:
+def compute_stats(trades: list[dict[str, Any]]) -> dict[str, Any]:
     """Compute performance stats from an ordered (oldest->newest) list of trades.
 
     Each trade must have a numeric ``pnl``; optional keys: ``side``, ``ts``.
@@ -67,7 +67,7 @@ def compute_stats(trades: List[Dict[str, Any]]) -> Dict[str, Any]:
         max_w = max(max_w, cur_w)
 
     # per-side breakdown
-    by_side: Dict[str, Dict[str, Any]] = {}
+    by_side: dict[str, dict[str, Any]] = {}
     for t in settled:
         side = t.get("side") or "unknown"
         b = by_side.setdefault(side, {"trades": 0, "wins": 0, "net_pnl": 0.0})
@@ -106,9 +106,10 @@ def compute_stats(trades: List[Dict[str, Any]]) -> Dict[str, Any]:
 # --------------------------------------------------------------------------- #
 # log parsing (mirrors polybtc_report.py's tail-JSON convention)
 # --------------------------------------------------------------------------- #
-def _load_tail_json(path: str) -> Optional[Dict[str, Any]]:
+def _load_tail_json(path: str) -> dict[str, Any] | None:
     try:
-        txt = open(path, "r", encoding="utf-8", errors="ignore").read()
+        with open(path, "r", encoding="utf-8", errors="ignore") as fh:
+            txt = fh.read()
     except OSError:
         return None
     i = txt.rfind("\n{")
@@ -123,13 +124,13 @@ def _load_tail_json(path: str) -> Optional[Dict[str, Any]]:
         return None
 
 
-def load_runs_from_logs(runtime_dir: str, limit: int = 500) -> List[Dict[str, Any]]:
+def load_runs_from_logs(runtime_dir: str, limit: int = 500) -> list[dict[str, Any]]:
     """Parse runtime logs into ordered (oldest->newest) trade dicts."""
     files = sorted(
         set(glob.glob(os.path.join(runtime_dir, "polybtc_*.log"))),
         key=lambda p: os.path.getmtime(p),
     )[-limit:]
-    trades: List[Dict[str, Any]] = []
+    trades: list[dict[str, Any]] = []
     for f in files:
         obj = _load_tail_json(f)
         if not obj:
@@ -164,11 +165,11 @@ def main() -> int:
     args = ap.parse_args()
 
     trades = load_runs_from_logs(args.runtime_dir, args.limit)
-    out: Dict[str, Any] = {"runtime_dir": args.runtime_dir, "stats": compute_stats(trades)}
+    out: dict[str, Any] = {"runtime_dir": args.runtime_dir, "stats": compute_stats(trades)}
 
     if args.breakeven:
         sys.path.insert(0, str(Path(__file__).resolve().parent))
-        from polybtc_edge import breakeven_table  # noqa: E402
+        from polybtc_edge import breakeven_table
         out["breakeven_table"] = breakeven_table()
 
     print(json.dumps(out, indent=2))

@@ -20,13 +20,12 @@ import argparse
 import itertools
 import json
 import sys
+from collections.abc import Iterable, Sequence
 from copy import deepcopy
-from dataclasses import asdict
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Any
 
 from polybtc_backtest import load_csv, run_backtest
-
 
 # Default grids (override via CLI). Kept modest so local runs stay fast.
 DEFAULT_THRESHOLDS = (0.70, 0.75, 0.80, 0.82)
@@ -36,9 +35,9 @@ DEFAULT_MOVE_MAXS = (None, 160.0, 200.0, 250.0)
 DEFAULT_CONFIRM = (1,)  # multi-poll needs sequential same-market polls; CSV is usually 1 row/market
 
 
-def _parse_floats(raw: str) -> List[Optional[float]]:
+def _parse_floats(raw: str) -> list[float | None]:
     """Parse comma list; empty token or 'none' → None (no cap / no filter)."""
-    out: List[Optional[float]] = []
+    out: list[float | None] = []
     for part in raw.split(","):
         p = part.strip().lower()
         if p in ("", "none", "null"):
@@ -48,11 +47,11 @@ def _parse_floats(raw: str) -> List[Optional[float]]:
     return out
 
 
-def _parse_ints(raw: str) -> List[int]:
+def _parse_ints(raw: str) -> list[int]:
     return [int(x.strip()) for x in raw.split(",") if x.strip()]
 
 
-def apply_overrides(base: Dict[str, Any], overrides: Dict[str, Any]) -> Dict[str, Any]:
+def apply_overrides(base: dict[str, Any], overrides: dict[str, Any]) -> dict[str, Any]:
     """Return a shallow-copied profile with calibration knobs applied."""
     prof = deepcopy(base)
     for key, value in overrides.items():
@@ -67,7 +66,7 @@ def score_result(
     trades: int,
     expectancy_usd: float,
     net_pnl_usd: float,
-    profit_factor: Optional[float],
+    profit_factor: float | None,
     win_rate: float,
     min_trades: int,
 ) -> float:
@@ -87,12 +86,12 @@ def score_result(
 
 def iter_grid(
     thresholds: Sequence[float],
-    skew_gaps: Sequence[Optional[float]],
+    skew_gaps: Sequence[float | None],
     move_mins: Sequence[float],
-    move_maxs: Sequence[Optional[float]],
+    move_maxs: Sequence[float | None],
     confirm_polls: Sequence[int],
     require_aligned: Sequence[bool],
-) -> Iterable[Dict[str, Any]]:
+) -> Iterable[dict[str, Any]]:
     for thr, skew, mmin, mmax, conf, aligned in itertools.product(
         thresholds, skew_gaps, move_mins, move_maxs, confirm_polls, require_aligned
     ):
@@ -109,22 +108,22 @@ def iter_grid(
 
 
 def calibrate(
-    base_profile: Dict[str, Any],
-    rows: List[Dict[str, str]],
+    base_profile: dict[str, Any],
+    rows: list[dict[str, str]],
     *,
     thresholds: Sequence[float] = DEFAULT_THRESHOLDS,
-    skew_gaps: Sequence[Optional[float]] = DEFAULT_SKEW_GAPS,
+    skew_gaps: Sequence[float | None] = DEFAULT_SKEW_GAPS,
     move_mins: Sequence[float] = DEFAULT_MOVE_MINS,
-    move_maxs: Sequence[Optional[float]] = DEFAULT_MOVE_MAXS,
+    move_maxs: Sequence[float | None] = DEFAULT_MOVE_MAXS,
     confirm_polls: Sequence[int] = DEFAULT_CONFIRM,
     require_aligned: Sequence[bool] = (True,),
     min_trades: int = 1,
     top: int = 15,
     ev_gate: bool = False,
     min_edge: float = 0.0,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Run the grid and return ranked candidates + best combo."""
-    candidates: List[Dict[str, Any]] = []
+    candidates: list[dict[str, Any]] = []
     grid = list(
         iter_grid(thresholds, skew_gaps, move_mins, move_maxs, confirm_polls, require_aligned)
     )
@@ -178,7 +177,11 @@ def calibrate(
 
 def main() -> int:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from polybtc_config import get_profile, load_config, validate_config  # noqa: PLC0415
+    from polybtc_config import (
+        get_profile,
+        load_config,
+        validate_config,
+    )
 
     ap = argparse.ArgumentParser(
         description="Calibrate PolyBTC accuracy filters via CSV backtest grid search"
@@ -231,7 +234,7 @@ def main() -> int:
 
     base = get_profile(cfg, args.profile)
     if args.require_aligned == "true":
-        aligned: Tuple[bool, ...] = (True,)
+        aligned: tuple[bool, ...] = (True,)
     elif args.require_aligned == "false":
         aligned = (False,)
     else:

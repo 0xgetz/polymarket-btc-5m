@@ -16,7 +16,7 @@ def main() -> int:
     # Prefer same interpreter; runner may still call .venv for child order process.
     cmd = [sys.executable, script, *sys.argv[1:]]
     # Runner lives in skill repo; cwd = skill root so sibling imports work.
-    p = subprocess.run(cmd, cwd=str(Path(script).resolve().parents[1]))
+    p = subprocess.run(cmd, cwd=str(Path(script).resolve().parents[1]), check=False)
     return int(p.returncode)
 
 

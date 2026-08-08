@@ -1,6 +1,6 @@
 """Tests for exit attribution report."""
 
-from polybtc_exit_report import compute_exit_attribution, _normalise_reason
+from polybtc_exit_report import _normalise_reason, compute_exit_attribution
 
 
 def test_normalise_reason_families():

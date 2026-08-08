@@ -3,8 +3,8 @@ import argparse
 import glob
 import json
 import os
-from pathlib import Path
 from collections import Counter
+from pathlib import Path
 
 
 def default_runtime_dir() -> str:
@@ -13,8 +13,9 @@ def default_runtime_dir() -> str:
 
 def load_tail_json(path: str):
     try:
-        txt = open(path, "r", encoding="utf-8", errors="ignore").read()
-    except Exception:
+        with open(path, "r", encoding="utf-8", errors="ignore") as fh:
+            txt = fh.read()
+    except OSError:
         return None
     i = txt.rfind("\n{")
     if i == -1 and txt.startswith("{"):
@@ -24,7 +25,7 @@ def load_tail_json(path: str):
     blob = txt[i + 1 :] if txt[i : i + 1] == "\n" else txt[i:]
     try:
         return json.loads(blob)
-    except Exception:
+    except (ValueError, TypeError):
         return None
 
 

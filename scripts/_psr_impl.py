@@ -15,7 +15,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import requests
 
@@ -24,10 +24,10 @@ _SCRIPTS = Path(__file__).resolve().parent
 if str(_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS))
 
-from polybtc_analytics import load_runs_from_logs  # noqa: E402
-from polybtc_config import get_profile, load_config, validate_config  # noqa: E402
-from polybtc_guardrails import check_guards  # noqa: E402
-from polybtc_live_safety import (  # noqa: E402
+from polybtc_analytics import load_runs_from_logs
+from polybtc_config import get_profile, load_config, validate_config
+from polybtc_guardrails import check_guards
+from polybtc_live_safety import (
     build_guard_state_from_pnls,
     close_limit_price,
     decide_exit,
@@ -37,12 +37,12 @@ from polybtc_live_safety import (  # noqa: E402
     stop_loss_price,
     today_utc,
 )
-from polybtc_preflight import ConfirmTracker, MarketSnapshot, evaluate  # noqa: E402
+from polybtc_preflight import ConfirmTracker, MarketSnapshot, evaluate
 
 try:
     from py_clob_client.client import ClobClient
-    from py_clob_client.constants import POLYGON
     from py_clob_client.clob_types import ApiCreds
+    from py_clob_client.constants import POLYGON
 except ImportError:  # pragma: no cover - optional until live stack installed
     ClobClient = None  # type: ignore
     POLYGON = 137
@@ -103,7 +103,7 @@ def parse_json_objects(text: str) -> list[dict[str, Any]]:
                             obj = json.loads(candidate)
                             if isinstance(obj, dict):
                                 out.append(obj)
-                        except Exception:
+                        except (ValueError, TypeError):
                             pass
                         i = j + 1
                         parsed = True
@@ -118,7 +118,7 @@ def bucket_5m(ts: int) -> int:
     return ts - (ts % 300)
 
 
-def fetch_event(slug: str) -> Optional[dict[str, Any]]:
+def fetch_event(slug: str) -> dict[str, Any] | None:
     r = requests.get(
         "https://gamma-api.polymarket.com/events",
         params={"slug": slug},
@@ -129,7 +129,7 @@ def fetch_event(slug: str) -> Optional[dict[str, Any]]:
     return arr[0] if arr else None
 
 
-def resolve_active_current_5m_market() -> Optional[dict[str, Any]]:
+def resolve_active_current_5m_market() -> dict[str, Any] | None:
     """Return active BTC 5m market for the current slot only."""
     now = int(time.time())
     cur = bucket_5m(now)
@@ -137,7 +137,7 @@ def resolve_active_current_5m_market() -> Optional[dict[str, Any]]:
 
     try:
         ev = fetch_event(slug)
-    except Exception:
+    except (requests.RequestException, ValueError, TypeError, IndexError):
         return None
     if not ev:
         return None
@@ -155,7 +155,7 @@ def resolve_active_current_5m_market() -> Optional[dict[str, Any]]:
     end_iso = str(m.get("endDate") or m.get("endDateIso") or "")
     try:
         end_ts = dt.datetime.fromisoformat(end_iso.replace("Z", "+00:00")).timestamp()
-    except Exception:
+    except ValueError:
         return None
 
     sec_left = end_ts - time.time()
@@ -172,7 +172,7 @@ def parse_json_field(v):
     if isinstance(v, str):
         try:
             return json.loads(v)
-        except Exception:
+        except (ValueError, TypeError):
             return v
     return v
 
@@ -203,7 +203,7 @@ def market_side_prices(market: dict[str, Any]) -> tuple[float, float, str, str, 
     )
 
 
-def _order_price_size(level) -> tuple[Optional[float], float]:
+def _order_price_size(level) -> tuple[float | None, float]:
     if level is None:
         return None, 0.0
     if isinstance(level, dict):
@@ -218,7 +218,7 @@ def _order_price_size(level) -> tuple[Optional[float], float]:
         return None, 0.0
 
 
-def _best_bid_ask(book) -> tuple[Optional[float], Optional[float], float, float]:
+def _best_bid_ask(book) -> tuple[float | None, float | None, float, float]:
     """Return best_bid, best_ask, top_bid_notional, top_ask_notional."""
     bids = getattr(book, "bids", None) or (book.get("bids") if isinstance(book, dict) else []) or []
     asks = getattr(book, "asks", None) or (book.get("asks") if isinstance(book, dict) else []) or []
@@ -285,7 +285,7 @@ def clob_side_snapshot(
     }
 
 
-def clob_best_bid(token_id: str, clob_base: str = "https://clob.polymarket.com") -> Optional[float]:
+def clob_best_bid(token_id: str, clob_base: str = "https://clob.polymarket.com") -> float | None:
     _require_clob()
     pub = ClobClient(host=clob_base, chain_id=POLYGON)
     book = pub.get_order_book(str(token_id))
@@ -293,7 +293,7 @@ def clob_best_bid(token_id: str, clob_base: str = "https://clob.polymarket.com")
     return best_bid
 
 
-def _btc_signed_move(interval: str, bucket_sec: int) -> Optional[float]:
+def _btc_signed_move(interval: str, bucket_sec: int) -> float | None:
     """Signed USD move of BTCUSDT for the current candle of ``interval``."""
     try:
         now = int(time.time())
@@ -315,11 +315,11 @@ def _btc_signed_move(interval: str, bucket_sec: int) -> Optional[float]:
         o = float(arr[0][1])
         c = float(arr[0][4])
         return c - o
-    except Exception:
+    except (requests.RequestException, ValueError, TypeError, IndexError, KeyError):
         return None
 
 
-def btc_move_usd_current_5m() -> Optional[float]:
+def btc_move_usd_current_5m() -> float | None:
     """Signed USD move of BTCUSDT in the current 5m Binance candle (close - open).
 
     Sign is required for ``require_move_aligned`` (UP needs positive move,
@@ -328,7 +328,7 @@ def btc_move_usd_current_5m() -> Optional[float]:
     return _btc_signed_move("5m", 300)
 
 
-def btc_move_usd_current_1m() -> Optional[float]:
+def btc_move_usd_current_1m() -> float | None:
     """Signed USD move of BTCUSDT in the current 1m Binance candle (close - open)."""
     return _btc_signed_move("1m", 60)
 
@@ -358,7 +358,7 @@ def auth_clob_client(clob_base: str = "https://clob.polymarket.com"):
         }
         c.set_api_creds(ApiCreds(**creds))
         return c
-    except Exception:
+    except Exception:  # noqa: BLE001 - archived CLOB client may raise arbitrary errors
         return None
 
 
@@ -367,7 +367,7 @@ def poll_order_status(
     order_id: str,
     wait_sec: float = 6.0,
     step_sec: float = 1.0,
-) -> tuple[str, Optional[dict[str, Any]]]:
+) -> tuple[str, dict[str, Any] | None]:
     if client is None or not order_id:
         return "", None
     deadline = time.time() + max(0.0, float(wait_sec))
@@ -378,23 +378,23 @@ def poll_order_status(
             st = str((last or {}).get("status") or "").upper()
             if st and st not in ("LIVE", "OPEN"):
                 return st, last
-        except Exception:
+        except Exception:  # noqa: BLE001, S110 - best-effort order poll; keep retrying
             pass
         time.sleep(max(0.2, float(step_sec)))
     try:
         last = client.get_order(order_id)
-    except Exception:
+    except Exception:  # noqa: BLE001, S110 - best-effort final poll
         pass
     st = str((last or {}).get("status") or "").upper()
     return st, last
 
 
-def cancel_token_orders(client, token_id: str) -> Optional[dict[str, Any]]:
+def cancel_token_orders(client, token_id: str) -> dict[str, Any] | None:
     if client is None:
         return None
     try:
         return client.cancel_market_orders(asset_id=str(token_id))
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 - CLOB client boundary
         return {"error": str(e)}
 
 
@@ -423,7 +423,7 @@ def run_open(
     if execute:
         cmd.append("--execute")
     env = open_execution_env(profile, os.environ.copy())
-    p = subprocess.run(cmd, cwd=repo, capture_output=True, text=True, env=env)
+    p = subprocess.run(cmd, cwd=repo, capture_output=True, text=True, env=env, check=False)
     out = (p.stdout or "") + "\n" + (p.stderr or "")
     return out, parse_json_objects(out)
 
@@ -453,7 +453,7 @@ def run_close(
         cmd.append("--execute")
     env = os.environ.copy()
     env["PM_CLOSE_ORDER_TYPE"] = str(close_order_type or "FAK").upper()
-    p = subprocess.run(cmd, cwd=repo, capture_output=True, text=True, env=env)
+    p = subprocess.run(cmd, cwd=repo, capture_output=True, text=True, env=env, check=False)
     out = (p.stdout or "") + "\n" + (p.stderr or "")
     return out, parse_json_objects(out)
 
@@ -622,7 +622,7 @@ def main() -> None:
             try:
                 end_ts = dt.datetime.fromisoformat(end_iso.replace("Z", "+00:00")).timestamp()
                 sec_left = max(0.0, end_ts - time.time())
-            except Exception:
+            except ValueError:
                 report["attempts"].append({"ts": ts_utc(), "slug": slug, "status": "heartbeat_bad_market_end"})
                 time.sleep(args.poll_sec)
                 continue
@@ -630,7 +630,7 @@ def main() -> None:
             try:
                 snap = clob_side_snapshot(up_t, dn_t)
                 consecutive_api_errors = 0
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001 - keep monitor loop alive if CLOB snapshot fails
                 consecutive_api_errors += 1
                 report["attempts"].append(
                     {
@@ -662,7 +662,7 @@ def main() -> None:
                     time.sleep(args.poll_sec)
                     continue
 
-            btc_move_1m: Optional[float] = None
+            btc_move_1m: float | None = None
             if work_profile.get("require_1m_aligned"):
                 if args.skip_btc_move:
                     # Dry override path: align 1m with 5m sign so preflight can proceed.
@@ -822,7 +822,7 @@ def main() -> None:
                 break
             else:
                 report["last_open_try"] = out[-2000:]
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - keep monitor loop alive on any open failure
             report["attempts"].append({"ts": ts_utc(), "status": "error", "error": str(e)})
         time.sleep(args.poll_sec)
 
@@ -837,7 +837,7 @@ def main() -> None:
     end_ts = None
     try:
         end_ts = dt.datetime.fromisoformat(opened["market_end_iso"].replace("Z", "+00:00")).timestamp()
-    except Exception:
+    except ValueError:
         end_ts = time.time() + 300
 
     sl_price = stop_loss_price(opened["entry_price"], args.stop_loss_pct)
@@ -854,11 +854,11 @@ def main() -> None:
         # Stop-loss / exit marks: CLOB best bid (executable exit), not Gamma mid.
         try:
             side_px = clob_best_bid(opened["token_id"])
-        except Exception:
+        except Exception:  # noqa: BLE001 - CLOB client boundary
             side_px = None
 
         # Optional BTC reverse check for early-cut (best-effort; skip if feed down).
-        btc_move_now: Optional[float] = None
+        btc_move_now: float | None = None
         early_cfg = (exit_policy.get("early_cut") or {})
         if early_cfg.get("enabled", True) and early_cfg.get("on_btc_reverse", True):
             if args.btc_move_usd is not None:
@@ -866,7 +866,7 @@ def main() -> None:
             elif not args.skip_btc_move:
                 try:
                     btc_move_now = btc_move_usd_current_5m()
-                except Exception:
+                except (requests.RequestException, ValueError, TypeError, IndexError, KeyError):
                     btc_move_now = None
 
         decision_x = decide_exit(
@@ -945,7 +945,7 @@ def main() -> None:
             bb = None
             try:
                 bb = clob_best_bid(opened["token_id"])
-            except Exception:
+            except Exception:  # noqa: BLE001 - CLOB client boundary
                 bb = None
             limit_px = close_limit_price(
                 opened["entry_price"],
@@ -1007,7 +1007,7 @@ def main() -> None:
                 bb2 = None
                 try:
                     bb2 = clob_best_bid(opened["token_id"])
-                except Exception:
+                except Exception:  # noqa: BLE001 - CLOB client boundary
                     bb2 = None
                 force_px = close_limit_price(
                     opened["entry_price"],

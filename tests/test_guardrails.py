@@ -1,13 +1,12 @@
 """Tests for capital-protection guardrails."""
 import pytest
-
 from polybtc_guardrails import (
     GuardState,
+    check_guards,
+    daily_loss_cap_usd,
+    ev_gate,
     new_state,
     register_result,
-    daily_loss_cap_usd,
-    check_guards,
-    ev_gate,
 )
 
 PROFILE = {

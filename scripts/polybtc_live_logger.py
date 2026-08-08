@@ -17,11 +17,11 @@ import argparse
 import csv
 import datetime as dt
 import json
-import os
 import sys
 import time
+from contextlib import nullcontext
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import requests
 
@@ -29,8 +29,8 @@ _SCRIPTS = Path(__file__).resolve().parent
 if str(_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS))
 
-from polybtc_config import get_profile, load_config, validate_config  # noqa: E402
-from polybtc_preflight import MarketSnapshot, evaluate  # noqa: E402
+from polybtc_config import get_profile, load_config, validate_config
+from polybtc_preflight import MarketSnapshot, evaluate
 
 UTC = dt.timezone.utc
 GAMMA = "https://gamma-api.polymarket.com"
@@ -55,7 +55,7 @@ def _parse_json_field(v: Any) -> Any:
     return v
 
 
-def btc_signed_move(interval: str, bucket_sec: int) -> Optional[float]:
+def btc_signed_move(interval: str, bucket_sec: int) -> float | None:
     try:
         now = int(time.time())
         start_ms = (now - (now % bucket_sec)) * 1000
@@ -74,11 +74,11 @@ def btc_signed_move(interval: str, bucket_sec: int) -> Optional[float]:
         if not arr:
             return None
         return float(arr[0][4]) - float(arr[0][1])  # close - open
-    except Exception:
+    except (requests.RequestException, ValueError, TypeError, IndexError, KeyError):
         return None
 
 
-def _best_bid_ask(book: Dict[str, Any]) -> Tuple[Optional[float], Optional[float], float]:
+def _best_bid_ask(book: dict[str, Any]) -> tuple[float | None, float | None, float]:
     bids = book.get("bids") or []
     asks = book.get("asks") or []
     best_bid = best_ask = None
@@ -107,16 +107,16 @@ def _best_bid_ask(book: Dict[str, Any]) -> Tuple[Optional[float], Optional[float
     return best_bid, best_ask, notional
 
 
-def fetch_book(token_id: str) -> Optional[Dict[str, Any]]:
+def fetch_book(token_id: str) -> dict[str, Any] | None:
     try:
         r = requests.get(f"{CLOB}/book", params={"token_id": str(token_id)}, timeout=10)
         r.raise_for_status()
         return r.json()
-    except Exception:
+    except (requests.RequestException, ValueError, TypeError):
         return None
 
 
-def resolve_market() -> Optional[Dict[str, Any]]:
+def resolve_market() -> dict[str, Any] | None:
     now = int(time.time())
     cur = bucket_5m(now)
     for slot in (cur, cur - 300, cur + 300):
@@ -125,7 +125,7 @@ def resolve_market() -> Optional[Dict[str, Any]]:
             r = requests.get(f"{GAMMA}/events", params={"slug": slug}, timeout=12)
             r.raise_for_status()
             arr = r.json()
-        except Exception:
+        except (requests.RequestException, ValueError, TypeError):
             continue
         if not arr:
             continue
@@ -138,7 +138,7 @@ def resolve_market() -> Optional[Dict[str, Any]]:
         end_iso = str(m.get("endDate") or m.get("endDateIso") or "")
         try:
             end_ts = dt.datetime.fromisoformat(end_iso.replace("Z", "+00:00")).timestamp()
-        except Exception:
+        except ValueError:
             continue
         sec_left = end_ts - time.time()
         if sec_left <= 5:
@@ -161,7 +161,7 @@ def resolve_market() -> Optional[Dict[str, Any]]:
     return None
 
 
-def snapshot_once(profile: Dict[str, Any]) -> Dict[str, Any]:
+def snapshot_once(profile: dict[str, Any]) -> dict[str, Any]:
     mkt = resolve_market()
     if not mkt:
         return {"ts": ts_utc(), "status": "no_active_market"}
@@ -181,7 +181,7 @@ def snapshot_once(profile: Dict[str, Any]) -> Dict[str, Any]:
     up_bid, _, _ = _best_bid_ask(up_book)
     dn_bid, _, _ = _best_bid_ask(dn_book)
 
-    spreads: List[float] = []
+    spreads: list[float] = []
     if up_ask is not None and up_bid is not None:
         spreads.append(max(0.0, up_ask - up_bid))
     if dn_ask is not None and dn_bid is not None:
@@ -210,7 +210,7 @@ def snapshot_once(profile: Dict[str, Any]) -> Dict[str, Any]:
     try:
         end_ts = dt.datetime.fromisoformat(mkt["end_iso"].replace("Z", "+00:00")).timestamp()
         sec_left = max(0.0, end_ts - time.time())
-    except Exception:
+    except ValueError:
         sec_left = float(mkt["seconds_left"])
 
     market = MarketSnapshot(
@@ -273,7 +273,7 @@ _CSV_FIELDS = [
 ]
 
 
-def row_to_csv_dict(row: Dict[str, Any]) -> Dict[str, Any]:
+def row_to_csv_dict(row: dict[str, Any]) -> dict[str, Any]:
     """Map an observation row to backtest-friendly CSV columns."""
     return {
         "market_id": row.get("slug") or "",
@@ -312,10 +312,9 @@ def export_jsonl_to_csv(jsonl_path: Path, csv_path: Path) -> int:
                 row = json.loads(line)
             except json.JSONDecodeError:
                 continue
-            if row.get("status") not in (None, "obs") and row.get("status") != "obs":
+            if row.get("status") not in (None, "obs"):
                 # Keep only market observations
-                if row.get("status") != "obs":
-                    continue
+                continue
             if row.get("status") == "obs" or (
                 row.get("up_ask") is not None and row.get("btc_move_usd") is not None
             ):
@@ -414,37 +413,33 @@ def main() -> int:
         flush=True,
     )
 
-    csv_fh = None
+    csv_ctx = open(csv_path, "w", encoding="utf-8", newline="") if do_csv else nullcontext()  # noqa: SIM115 - closed by the with block below
     csv_writer = None
     if do_csv:
-        csv_fh = open(csv_path, "w", encoding="utf-8", newline="")
-        csv_writer = csv.DictWriter(csv_fh, fieldnames=_CSV_FIELDS, extrasaction="ignore")
+        csv_writer = csv.DictWriter(csv_ctx, fieldnames=_CSV_FIELDS, extrasaction="ignore")
         csv_writer.writeheader()
-        csv_fh.flush()
+        csv_ctx.flush()
 
-    try:
-        with open(out_path, "a", encoding="utf-8") as fh:
-            with open(latest, "a", encoding="utf-8") as latest_fh:
-                while True:
-                    row = snapshot_once(profile)
-                    line = json.dumps(row, ensure_ascii=False)
-                    fh.write(line + "\n")
-                    fh.flush()
-                    latest_fh.write(line + "\n")
-                    latest_fh.flush()
-                    if csv_writer is not None and row.get("status") == "obs":
-                        csv_writer.writerow(row_to_csv_dict(row))
-                        csv_fh.flush()
-                    n += 1
-                    if row.get("preflight_ok"):
-                        n_go += 1
-                    print(line, flush=True)
-                    if args.once or time.time() >= deadline:
-                        break
-                    time.sleep(max(1.0, float(args.poll_sec)))
-    finally:
-        if csv_fh is not None:
-            csv_fh.close()
+    with open(out_path, "a", encoding="utf-8") as fh, open(
+        latest, "a", encoding="utf-8"
+    ) as latest_fh, csv_ctx:
+        while True:
+            row = snapshot_once(profile)
+            line = json.dumps(row, ensure_ascii=False)
+            fh.write(line + "\n")
+            fh.flush()
+            latest_fh.write(line + "\n")
+            latest_fh.flush()
+            if csv_writer is not None and row.get("status") == "obs":
+                csv_writer.writerow(row_to_csv_dict(row))
+                csv_ctx.flush()
+            n += 1
+            if row.get("preflight_ok"):
+                n_go += 1
+            print(line, flush=True)
+            if args.once or time.time() >= deadline:
+                break
+            time.sleep(max(1.0, float(args.poll_sec)))
 
     summary = {
         "finished_at": ts_utc(),

@@ -22,7 +22,7 @@ import json
 import os
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from polybtc_analytics import compute_stats, load_runs_from_logs
 
@@ -31,7 +31,7 @@ def today_utc() -> str:
     return dt.datetime.now(dt.timezone.utc).date().isoformat()
 
 
-def filter_by_date(trades: List[Dict[str, Any]], date_iso: str) -> List[Dict[str, Any]]:
+def filter_by_date(trades: list[dict[str, Any]], date_iso: str) -> list[dict[str, Any]]:
     """Keep trades whose UTC date (from epoch 'ts') matches date_iso (YYYY-MM-DD)."""
     out = []
     for t in trades:
@@ -45,16 +45,16 @@ def filter_by_date(trades: List[Dict[str, Any]], date_iso: str) -> List[Dict[str
 
 
 def build_summary(
-    trades: List[Dict[str, Any]],
+    trades: list[dict[str, Any]],
     date_iso: str,
-    profile: Optional[Dict[str, Any]] = None,
-    equity: Optional[float] = None,
-) -> Dict[str, Any]:
+    profile: dict[str, Any] | None = None,
+    equity: float | None = None,
+) -> dict[str, Any]:
     """Compute the day's stats plus risk-context flags."""
     stats = compute_stats(trades)
-    summary: Dict[str, Any] = {"date": date_iso, "stats": stats}
+    summary: dict[str, Any] = {"date": date_iso, "stats": stats}
 
-    risk: Dict[str, Any] = {}
+    risk: dict[str, Any] = {}
     if profile:
         max_streak = int(profile.get("max_consecutive_losses", 0) or 0)
         worst_streak = int(stats.get("max_consecutive_losses", 0) or 0)
@@ -72,7 +72,7 @@ def build_summary(
     return summary
 
 
-def render_text(summary: Dict[str, Any]) -> str:
+def render_text(summary: dict[str, Any]) -> str:
     s = summary.get("stats", {})
     risk = summary.get("risk", {})
     lines = [f"📊 PolyBTC Momentum — Daily Summary ({summary['date']} UTC)", ""]
@@ -90,8 +90,7 @@ def render_text(summary: Dict[str, Any]) -> str:
         f"• Net PnL: {s['net_pnl']:+.2f} USDC",
         f"• Expectancy/trade: {s['expectancy_per_trade']:+.3f} USDC",
         f"• Profit factor: {pf if pf != float('inf') else '∞'}",
-        f"• Avg win / avg loss: "
-        f"{(s.get('avg_win') or 0):+.2f} / {(s.get('avg_loss') or 0):+.2f}",
+        f"• Avg win / avg loss: {(s.get('avg_win') or 0):+.2f} / {(s.get('avg_loss') or 0):+.2f}",
         f"• Max drawdown: {s['max_drawdown']:.2f} USDC",
         f"• Worst loss streak: {s['max_consecutive_losses']}",
     ]
@@ -121,7 +120,7 @@ def _post_webhook(url: str, text: str) -> int:
     # Send both keys so it works with Slack ('text') and Discord ('content').
     payload = json.dumps({"text": text, "content": text}).encode("utf-8")
     req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=15) as resp:  # noqa: S310
+    with urllib.request.urlopen(req, timeout=15) as resp:
         return resp.status
 
 
@@ -142,7 +141,11 @@ def main() -> int:
 
     profile = None
     if args.profile:
-        from polybtc_config import load_config, validate_config, get_profile  # noqa: E402
+        from polybtc_config import (
+            get_profile,
+            load_config,
+            validate_config,
+        )
         cfg = load_config(args.config)
         errs = validate_config(cfg)
         if errs:

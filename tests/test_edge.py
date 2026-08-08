@@ -1,15 +1,13 @@
 """Tests for the edge / break-even calculator."""
-import math
 
 import pytest
-
 from polybtc_edge import (
-    win_payoff,
+    breakeven_table,
     breakeven_winrate,
+    edge,
     ev_per_stake,
     expected_value,
-    edge,
-    breakeven_table,
+    win_payoff,
 )
 
 

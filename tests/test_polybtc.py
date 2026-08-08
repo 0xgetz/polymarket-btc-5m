@@ -9,12 +9,12 @@ import pytest
 SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 
-import polybtc_config as cfgmod  # noqa: E402
-from polybtc_preflight import (  # noqa: E402
+import polybtc_config as cfgmod
+from polybtc_preflight import (
     MarketSnapshot,
-    evaluate,
     compute_hedge,
     estimate_win_prob,
+    evaluate,
     scale_stake_usd,
     session_hour_allowed,
 )
@@ -94,15 +94,15 @@ def _good_market(profile, **overrides):
     if "hour_utc" not in overrides:
         overrides = dict(overrides)
         overrides.setdefault("hour_utc", 14)
-    base = dict(
-        seconds_left=profile["entry_window_seconds_left_target"],
-        btc_move_usd=move,
-        up_ask=max(0.71, profile["threshold_price"]),
-        dn_ask=0.29,
-        spread=profile["skip_if_spread_gt"] / 2,
-        top_ask_notional_usd=profile["skip_if_top_ask_notional_usd_lt"] + 10,
-        quote_age_sec=1.0,
-    )
+    base = {
+        "seconds_left": profile["entry_window_seconds_left_target"],
+        "btc_move_usd": move,
+        "up_ask": max(0.71, profile["threshold_price"]),
+        "dn_ask": 0.29,
+        "spread": profile["skip_if_spread_gt"] / 2,
+        "top_ask_notional_usd": profile["skip_if_top_ask_notional_usd_lt"] + 10,
+        "quote_age_sec": 1.0,
+    }
     base.update(overrides)
     return MarketSnapshot(**base)
 

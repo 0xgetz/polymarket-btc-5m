@@ -1,13 +1,12 @@
 """Tests for the dry-run (paper trading) recorder."""
 import datetime as dt
 
-import pytest
-
 import polybtc_config as cfgmod
-from polybtc_preflight import MarketSnapshot
+import pytest
+from polybtc_analytics import compute_stats, load_runs_from_logs
 from polybtc_dryrun import simulate_trade, write_paper_log
 from polybtc_edge import win_payoff
-from polybtc_analytics import load_runs_from_logs, compute_stats
+from polybtc_preflight import MarketSnapshot
 
 
 @pytest.fixture(scope="module")
@@ -17,17 +16,17 @@ def profile():
 
 def _good_market(profile, **ov):
     move = ov.get("btc_move_usd", profile["btc_move_usd_min"] + 10)
-    base = dict(
-        seconds_left=profile["entry_window_seconds_left_target"],
-        btc_move_usd=move,
-        up_ask=max(0.71, profile["threshold_price"]),
-        dn_ask=0.29,
-        spread=profile["skip_if_spread_gt"] / 2,
-        top_ask_notional_usd=profile["skip_if_top_ask_notional_usd_lt"] + 10,
-        quote_age_sec=1.0,
-        hour_utc=14,
-        btc_move_1m_usd=5.0 if float(move) >= 0 else -5.0,
-    )
+    base = {
+        "seconds_left": profile["entry_window_seconds_left_target"],
+        "btc_move_usd": move,
+        "up_ask": max(0.71, profile["threshold_price"]),
+        "dn_ask": 0.29,
+        "spread": profile["skip_if_spread_gt"] / 2,
+        "top_ask_notional_usd": profile["skip_if_top_ask_notional_usd_lt"] + 10,
+        "quote_age_sec": 1.0,
+        "hour_utc": 14,
+        "btc_move_1m_usd": 5.0 if float(move) >= 0 else -5.0,
+    }
     base.update(ov)
     return MarketSnapshot(**base)
 

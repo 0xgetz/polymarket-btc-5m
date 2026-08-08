@@ -2,8 +2,7 @@
 import datetime as dt
 
 import pytest
-
-from polybtc_daily_summary import filter_by_date, build_summary, render_text
+from polybtc_daily_summary import build_summary, filter_by_date, render_text
 
 
 def _ts(date_iso, hour=12):

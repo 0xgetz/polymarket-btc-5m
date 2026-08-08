@@ -26,9 +26,10 @@ import argparse
 import csv
 import json
 import sys
+from collections.abc import Iterable
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any
 
 from polybtc_edge import edge, expected_value
 from polybtc_preflight import MarketSnapshot, evaluate
@@ -44,10 +45,10 @@ class BacktestTrade:
     stake_usd: float
     pnl_usd: float
     win: bool
-    estimated_win_prob: Optional[float]
-    edge: Optional[float]
-    ev_usd: Optional[float]
-    reasons: List[str]
+    estimated_win_prob: float | None
+    edge: float | None
+    ev_usd: float | None
+    reasons: list[str]
 
 
 @dataclass
@@ -61,22 +62,22 @@ class BacktestResult:
     win_rate: float
     net_pnl_usd: float
     expectancy_usd: float
-    profit_factor: Optional[float]
+    profit_factor: float | None
     max_drawdown_usd: float
-    avg_entry_price: Optional[float]
-    avg_edge: Optional[float]
-    by_side: Dict[str, Dict[str, float]]
-    trades_detail: List[BacktestTrade]
+    avg_entry_price: float | None
+    avg_edge: float | None
+    by_side: dict[str, dict[str, float]]
+    trades_detail: list[BacktestTrade]
 
 
-def _parse_float(row: Dict[str, str], key: str, default: Optional[float] = None) -> Optional[float]:
+def _parse_float(row: dict[str, str], key: str, default: float | None = None) -> float | None:
     value = row.get(key, "")
     if value is None or str(value).strip() == "":
         return default
     return float(value)
 
 
-def _parse_hour_utc(row: Dict[str, str]) -> Optional[int]:
+def _parse_hour_utc(row: dict[str, str]) -> int | None:
     raw = row.get("hour_utc", "")
     if raw is not None and str(raw).strip() != "":
         return int(float(raw))
@@ -93,7 +94,7 @@ def _parse_hour_utc(row: Dict[str, str]) -> Optional[int]:
     return None
 
 
-def _parse_snapshot(row: Dict[str, str]) -> MarketSnapshot:
+def _parse_snapshot(row: dict[str, str]) -> MarketSnapshot:
     m1 = _parse_float(row, "btc_move_1m_usd")
     # If 1m not provided, fall back to 5m sign so require_1m_aligned can still run in samples.
     if m1 is None:
@@ -115,7 +116,7 @@ def _parse_snapshot(row: Dict[str, str]) -> MarketSnapshot:
     )
 
 
-def _normalise_outcome(raw: str, selected_side: str) -> Tuple[str, bool]:
+def _normalise_outcome(raw: str, selected_side: str) -> tuple[str, bool]:
     outcome = raw.strip().upper()
     if outcome in {"UP", "DOWN"}:
         return outcome, outcome == selected_side
@@ -143,8 +144,8 @@ def _max_drawdown(pnls: Iterable[float]) -> float:
     return max_dd
 
 
-def _side_summary(trades: List[BacktestTrade]) -> Dict[str, Dict[str, float]]:
-    out: Dict[str, Dict[str, float]] = {}
+def _side_summary(trades: list[BacktestTrade]) -> dict[str, dict[str, float]]:
+    out: dict[str, dict[str, float]] = {}
     for side in ("UP", "DOWN"):
         side_trades = [t for t in trades if t.side == side]
         wins = sum(1 for t in side_trades if t.win)
@@ -160,8 +161,8 @@ def _side_summary(trades: List[BacktestTrade]) -> Dict[str, Dict[str, float]]:
 
 
 def run_backtest(
-    profile: Dict[str, Any],
-    rows: Iterable[Dict[str, str]],
+    profile: dict[str, Any],
+    rows: Iterable[dict[str, str]],
     *,
     ev_gate: bool = False,
     min_edge: float = 0.0,
@@ -170,7 +171,7 @@ def run_backtest(
     row_count = 0
     signals = 0
     skipped_ev = 0
-    trades: List[BacktestTrade] = []
+    trades: list[BacktestTrade] = []
 
     for row in rows:
         row_count += 1
@@ -239,14 +240,18 @@ def run_backtest(
     )
 
 
-def load_csv(path: str) -> List[Dict[str, str]]:
+def load_csv(path: str) -> list[dict[str, str]]:
     with open(path, newline="", encoding="utf-8") as fh:
         return list(csv.DictReader(fh))
 
 
 def main() -> int:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from polybtc_config import get_profile, load_config, validate_config  # noqa: PLC0415
+    from polybtc_config import (
+        get_profile,
+        load_config,
+        validate_config,
+    )
 
     ap = argparse.ArgumentParser(description="PolyBTC Momentum CSV backtester")
     ap.add_argument("--csv", required=True, help="historical snapshot CSV path")

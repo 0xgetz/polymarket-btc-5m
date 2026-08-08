@@ -1,7 +1,6 @@
 """Tests for the CSV historical backtester."""
 
 import pytest
-
 from polybtc_backtest import run_backtest
 
 

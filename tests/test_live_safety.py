@@ -167,7 +167,6 @@ def test_merge_exit_policy_from_profile():
 
 
 def test_pnls_for_today_filters_by_day():
-    import datetime as dt
     import time
 
     today = safety.today_utc()
